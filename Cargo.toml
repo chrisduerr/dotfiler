@@ -4,5 +4,6 @@ version = "0.1.0"
 authors = ["Undeadleech <programming@undeadleech.de", "matthunz(forked from ricinator) <matthunz2@gmail.com>"]
 
 [dependencies]
-tera = "0.1.2"
+walkdir = "0.1"
+tera = "0.1"
 toml = "0.1"

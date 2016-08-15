@@ -1,3 +1,4 @@
+extern crate walkdir;
 extern crate tera;
 extern crate toml;
 

@@ -1,1 +1,1 @@
-*.foreground:   {{ fg }} 
+*.foreground:   #d07f11

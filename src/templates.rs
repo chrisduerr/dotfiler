@@ -1,7 +1,8 @@
 use tera::{Tera, Context};
 use toml::Table;
-use std::fs::File;
+use std::fs::{File, create_dir_all};
 use std::io::Write;
+use std::path::Path;
 
 pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
     let variables = config
@@ -27,8 +28,15 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
         let render = tera
             .render(template, context.clone())
             .expect("Could not find template!");
+
+        create_dir_all(Path::new(&path).parent()
+                       .expect("Invalid path structure"))
+            .expect("Could not create target directory.");
+
         let mut file = File::create(&path)
             .expect(format!("Couldn't access {}", path).as_str());
         let _ = file.write_all(render.as_bytes());
+
+        println!("Copied {}/templates/{} to {}", app_dir, template, path);
     };
 }

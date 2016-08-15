@@ -1,8 +1,9 @@
 [templates]
-xresources = "~/MyXresourcesTemplate"
+xresources = "~/testing/MyXresourcesTemplate"
 
 [dotfiles]
-xresources = "~/MyXresourcesDotfile"
+xresources = "~/testing/MyXresourcesDotfile"
+scripts = "~/testing/Scripts"
 
 [variables]
-fg = "#888888"
+fg = "#7e1a7e"
