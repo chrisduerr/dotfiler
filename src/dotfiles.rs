@@ -2,7 +2,7 @@ use toml::Table;
 use walkdir::WalkDir;
 use std::path::Path;
 use std::os::unix::fs::symlink;
-use std::fs::{create_dir_all, copy, symlink_metadata, read_link};
+use std::fs::{remove_file, create_dir_all, copy, symlink_metadata, read_link};
 
 pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
     let dotfiles = config
@@ -37,6 +37,7 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
                     .expect(format!("Could not copy {}.", &ent_src_path).as_str());
             }
             else if src_meta.file_type().is_symlink() {
+                let _ = remove_file(&ent_tar_path);
                 let real_path = read_link(&ent_src_path)
                     .expect("Could not resolve symlink path.");
                 symlink(real_path, &ent_tar_path)
