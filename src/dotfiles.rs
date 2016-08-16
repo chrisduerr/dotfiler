@@ -16,6 +16,8 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
         let src_len = src_path.len();
 
         for entry in WalkDir::new(&src_path) {
+            println!("Copying {} to {}", ent_src_path, ent_tar_path);
+
             let ent_src_path = entry
                 .expect("There was an error accessing the dotfile source.");
             let ent_src_path = ent_src_path.path().to_str()
@@ -31,8 +33,6 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
 
                 copy(&ent_src_path, &ent_tar_path)
                     .expect(format!("Could not copy {}.", &ent_src_path).as_str());
-
-                println!("Copied {} to {}", ent_src_path, ent_tar_path);
             }
         }
     }

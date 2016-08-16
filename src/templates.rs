@@ -23,6 +23,8 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
         .as_table().expect("[templates] is not a valid TOML table");
 
     for (template, path) in templates {
+        println!("Copying {}/templates/{} to {}", app_dir, template, path);
+
         let path_str = path.as_str().expect("error: path not a valid string");
         let path = path_str.replace("$HOME", home_dir).replace("~", home_dir);
         let render = tera
@@ -36,7 +38,5 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
         let mut file = File::create(&path)
             .expect(format!("Couldn't access {}", path).as_str());
         let _ = file.write_all(render.as_bytes());
-
-        println!("Copied {}/templates/{} to {}", app_dir, template, path);
     };
 }
