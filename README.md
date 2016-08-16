@@ -1,5 +1,5 @@
 #Dotfiler
-Forked from https://github.com/matthunz/riceinator
+Forked from https://github.com/matthunz/dotfiler
 Manage your configuration files easily with templating and backup your dotfiles.
 
 ##Installation
