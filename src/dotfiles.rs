@@ -1,7 +1,8 @@
 use toml::Table;
 use walkdir::WalkDir;
 use std::path::Path;
-use std::fs::{create_dir_all, copy, metadata};
+use std::os::unix::fs::symlink;
+use std::fs::{create_dir_all, copy, symlink_metadata, read_link};
 
 pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
     let dotfiles = config
@@ -24,14 +25,21 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
 
             println!("Copying {} to {}", ent_src_path, ent_tar_path);
 
-            let src_meta = metadata(&ent_src_path)
+            let src_meta = symlink_metadata(&ent_src_path)
                 .expect("Could not get file metadata.");
-            if src_meta.is_file() {
+            if src_meta.is_file() || src_meta.file_type().is_symlink() {
                 create_dir_all(Path::new(&ent_tar_path).parent()
                                .expect("Invalid path structure."))
                     .expect("Could not create target directory.");
-
+            }
+            if src_meta.is_file() {
                 copy(&ent_src_path, &ent_tar_path)
+                    .expect(format!("Could not copy {}.", &ent_src_path).as_str());
+            }
+            else if src_meta.file_type().is_symlink() {
+                let real_path = read_link(&ent_src_path)
+                    .expect("Could not resolve symlink path.");
+                symlink(real_path, &ent_tar_path)
                     .expect(format!("Could not copy {}.", &ent_src_path).as_str());
             }
         }

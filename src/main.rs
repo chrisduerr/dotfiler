@@ -1,4 +1,3 @@
-// TODO: Fix Symlinks
 // TODO: Add theme system
 extern crate walkdir;
 extern crate tera;
