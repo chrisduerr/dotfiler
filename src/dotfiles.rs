@@ -16,13 +16,13 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
         let src_len = src_path.len();
 
         for entry in WalkDir::new(&src_path) {
-            println!("Copying {} to {}", ent_src_path, ent_tar_path);
-
             let ent_src_path = entry
                 .expect("There was an error accessing the dotfile source.");
             let ent_src_path = ent_src_path.path().to_str()
                 .expect("Path is not a valid string.");
             let ent_tar_path = format!("{}{}", tar_path, &ent_src_path[src_len..]);
+
+            println!("Copying {} to {}", ent_src_path, ent_tar_path);
 
             let src_meta = metadata(&ent_src_path)
                 .expect("Could not get file metadata.");
