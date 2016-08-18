@@ -1,4 +1,6 @@
-// TODO: Add theme system
+// TODO: (Optional) Add theme system
+// TODO: (Optional) Add globals with theme system
+// TODO: Recover gracefully from errors
 extern crate walkdir;
 extern crate tera;
 extern crate toml;
@@ -20,9 +22,13 @@ fn main() {
     let app_dir = app_dir.to_str().unwrap();
 
     let mut buffer = String::new();
-    let _ = File::open(format!("{}/config.toml", app_dir).as_str())
-        .expect("Couldn't find configuration file")
-        .read_to_string(&mut buffer);
+    let _ = match File::open(format!("{}/config.toml", app_dir).as_str()) {
+        Ok(mut f) => f.read_to_string(&mut buffer),
+        Err(_) => {
+            println!("Could not open config file.");
+            exit(1);
+        }
+    };
 
     let config = match Parser::new(&buffer).parse() {
         Some(config) => config,
