@@ -1,7 +1,6 @@
 use toml::{Table, Value};
 use walkdir::WalkDir;
 use std::path::Path;
-use std::process::exit;
 use std::os::unix::fs::symlink;
 use std::fs::{remove_file, create_dir_all, copy, symlink_metadata, read_link};
 
@@ -10,7 +9,7 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
         Some(t) => t,
         None => {
             println!("[dotfiles] section is missing or invalid.");
-            exit(1);
+            return;
         }
     };
 

@@ -1,42 +1,79 @@
 use tera::{Tera, Context};
-use toml::Table;
+use toml::{Table, Value};
 use std::fs::{File, create_dir_all};
 use std::io::Write;
 use std::path::Path;
 
 pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
-    let variables = config
-        .get("variables")
-        .expect("No [variables] section found")
-        .as_table().expect("[variables] is not a valid TOML table");
+    let variables = match config.get("variables").and_then(Value::as_table) {
+        Some(t) => t,
+        None => {
+            println!("[variables] section is missing or invalid.");
+            return;
+        },
+    };
     let mut context = Context::new();
 
     for (key, val) in variables {
-        context.add(key, &val.as_str().expect("error: value not a valid string"));
+        match val.as_str() {
+            Some(val_str) => context.add(key, &val_str),
+            None => println!("Failed parsing {}: Value is not a valid string.",
+                             key),
+        };
     };
 
     let tera = Tera::new(format!("{}/templates/*", app_dir).as_str());
 
-    let templates = config
-        .get("templates")
-        .expect("No [templates] section found")
-        .as_table().expect("[templates] is not a valid TOML table");
-
-    for (template, path) in templates {
-        println!("Copying {}/templates/{} to {}", app_dir, template, path);
-
-        let path_str = path.as_str().expect("error: path not a valid string");
-        let path = path_str.replace("$HOME", home_dir).replace("~", home_dir);
-        let render = tera
-            .render(template, context.clone())
-            .expect("Could not find template!");
-
-        create_dir_all(Path::new(&path).parent()
-                       .expect("Invalid path structure"))
-            .expect("Could not create target directory.");
-
-        let mut file = File::create(&path)
-            .expect(format!("Couldn't access {}", path).as_str());
-        let _ = file.write_all(render.as_bytes());
+    let templates = match config.get("templates").and_then(Value::as_table) {
+        Some(t) => t,
+        None => {
+            println!("[templates] section is missing or invalid.");
+            return;
+        },
     };
+
+    let mut failed = Vec::new();
+    for (template, path) in templates {
+        let path = match path.as_str() {
+            Some(s) => s,
+            None => {
+                failed.push((template, String::from("Value is not a valid string.")));
+                continue;
+            },
+        };
+        let path = path.replace("$HOME", home_dir).replace("~", home_dir);
+        let render = match tera.render(template, context.clone()) {
+            Ok(r) => r,
+            Err(_) => {
+                failed.push((template, String::from("Unable to convert template.")));
+                continue;
+            },
+        };
+
+        if create_dir_all(match Path::new(&path).parent() {
+            Some(parent_path) => parent_path,
+            None => {
+                failed.push((template, String::from("Target directory can't \
+                                                    be root.")));
+                continue;
+            },
+        }).is_err() {
+            failed.push((template, String::from("Could not create one or \
+                                                more directories required.")));
+            continue;
+        }
+
+        let mut file = match File::create(&path) {
+            Ok(f) => f,
+            Err(_) => {
+                failed.push((template, String::from("Couldn't create target file.")));
+                continue;
+            }
+        };
+        let _ = file.write_all(render.as_bytes());
+    }
+
+    for failure in failed {
+        println!("Failed copying {}: {}", failure.0, failure.1);
+    }
 }
