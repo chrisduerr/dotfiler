@@ -1,6 +1,5 @@
 // TODO: (Optional) Add theme system
 // TODO: (Optional) Add globals with theme system
-// TODO: Recover gracefully from errors
 extern crate walkdir;
 extern crate tera;
 extern crate toml;
