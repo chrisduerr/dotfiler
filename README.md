@@ -4,7 +4,7 @@ Manage your configuration files easily with templating and backup your dotfiles.
 
 ## Installation
   1. ```git clone https://gitlab.com/chrisduerr/dotfiler.git```
-  2. ```cd``` into the newly-created directory
+  2. ```cd dotfiler``` to change into the new directory
   3. Run ```cargo build --release```
   4. Copy the executable in ```./target/release``` to your desired location
 
