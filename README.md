@@ -11,7 +11,7 @@ Manage your configuration files easily with templating and backup your dotfiles.
 ## Usage
   1. Move your template files, for example xresources, into ```dotfiler-dir/templates```
   2. Make an entry for it inside the config.toml in the ```[templates]``` category using ```templatename = path/to/real/file```
-  3. Replace any text inside to be changed with {{ variablename }} inside the template file
+  3. Replace any text inside to be changed with ```{{ variable.name }}``` inside the template file
   4. Add the variable name under ```[variables]``` in config.toml
   5. Move your dotfiles, for example compton.conf, into ```dotfiler-dir/dotfiles```
   6. Make an entry for it inside the config.toml in the ```[dotfiles]``` category using ```templatename = path/to/real/file```
