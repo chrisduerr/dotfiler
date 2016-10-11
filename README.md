@@ -1,14 +1,14 @@
-#Dotfiler
+# Dotfiler
 Forked from https://github.com/matthunz/dotfiler
 Manage your configuration files easily with templating and backup your dotfiles.
 
-##Installation
+## Installation
   1. ```git clone https://gitlab.com/undeadleech/dotfiler.git```
   2. ```cd``` into the newly-created directory
   3. Run ```cargo build --release```
   4. Copy the executable in ```./target/release``` to your desired location
 
-##Usage
+## Usage
   1. Move your template files, for example xresources, into ```dotfiler-dir/templates```
   2. Make an entry for it inside the config.toml in the ```[templates]``` category using ```templatename = path/to/real/file```
   3. Replace any text inside to be changed with {{ variablename }} inside the template file
