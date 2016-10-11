@@ -3,7 +3,7 @@ Forked from https://github.com/matthunz/dotfiler
 Manage your configuration files easily with templating and backup your dotfiles.
 
 ## Installation
-  1. ```git clone https://gitlab.com/undeadleech/dotfiler.git```
+  1. ```git clone https://gitlab.com/chrisduerr/dotfiler.git```
   2. ```cd``` into the newly-created directory
   3. Run ```cargo build --release```
   4. Copy the executable in ```./target/release``` to your desired location
