@@ -1,5 +1,6 @@
 // TODO: (Optional) Add theme system
 // TODO: (Optional) Add globals with theme system
+// TODO: Add directory/symlink copy to templates and remove dotfiles.rs
 extern crate walkdir;
 extern crate sqlite;
 extern crate tera;

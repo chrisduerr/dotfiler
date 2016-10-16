@@ -14,7 +14,6 @@ pub fn load() {
         None => return,
     };
 
-
     let tera = Tera::new(format!("{}/templates/*", utilities::get_app_dir()).as_str());
     for (template, path) in templates {
         let path = match utilities::path_value_to_string(&path) {
