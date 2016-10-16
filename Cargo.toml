@@ -5,5 +5,6 @@ authors = ["Undeadleech <programming@undeadleech.de", "matthunz(forked from rici
 
 [dependencies]
 walkdir = "0.1"
+sqlite = "0.23"
 tera = "0.1"
 toml = "0.1"

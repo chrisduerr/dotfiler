@@ -1,29 +1,26 @@
-use toml::{Table, Value};
 use walkdir::WalkDir;
-use std::path::Path;
 use std::os::unix::fs::symlink;
-use std::fs::{remove_file, create_dir_all, copy, symlink_metadata, read_link};
+use std::fs::{remove_file, copy, symlink_metadata, read_link};
+use utilities;
 
-pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
-    let dotfiles = match config.get("dotfiles").and_then(Value::as_table) {
+pub fn load() {
+    let dotfiles = match utilities::load_from_toml("dotfiles") {
         Some(t) => t,
-        None => {
-            println!("[dotfiles] section is missing or invalid.");
-            return;
-        }
+        None => return,
     };
 
-    let mut failed = Vec::new();
     for (dotfile, tar_path) in dotfiles {
-        let tar_path = match tar_path.as_str() {
+        let tar_path = match utilities::path_value_to_string(&tar_path) {
             Some(s) => s,
             None => {
-                failed.push((dotfile, String::from("Value is not a valid string.")));
+                println!("Failed copying {}: {} is not a valid path String.",
+                         &dotfile,
+                         tar_path);
                 continue;
-            },
+            }
         };
-        let tar_path = tar_path.replace("$HOME", home_dir).replace("~", home_dir);
-        let src_path = format!("{}/dotfiles/{}", app_dir, dotfile);
+
+        let src_path = format!("{}/dotfiles/{}", utilities::get_app_dir(), &dotfile);
         let src_len = src_path.len();
 
         for entry in WalkDir::new(&src_path) {
@@ -34,50 +31,43 @@ pub fn load(home_dir: &str, app_dir: &str, config: &Table) {
             let src_meta = match symlink_metadata(&ent_src_path) {
                 Ok(meta) => meta,
                 Err(_) => {
-                    failed.push((dotfile, String::from("You don't have permissions \
-                                 to access {} or it doesn't exist.")));
+                    println!("Faild copying {}: You don't have permission to acces {} or it \
+                              doesn't exist",
+                             &dotfile,
+                             &ent_src_path);
                     continue;
-                },
+                }
             };
             if src_meta.is_file() || src_meta.file_type().is_symlink() {
-                if create_dir_all(match Path::new(&ent_tar_path).parent() {
-                    Some(parent_path) => parent_path,
-                    None => {
-                        failed.push((dotfile, String::from("Target directory can't \
-                                     be root.")));
-                        continue;
-                    },
-                }).is_err() {
-                    failed.push((dotfile, String::from("Could not create one or \
-                                 more directories required.")));
-                    continue;
+                let create_dirs_success = utilities::create_directories_for_file(&ent_tar_path);
+                if !create_dirs_success {
+                    println!("Failed copying {}: Could not create one or more directories \
+                              required.",
+                             &dotfile);
                 }
             }
             if src_meta.is_file() {
                 if copy(&ent_src_path, &ent_tar_path).is_err() {
-                    failed.push((dotfile, format!("Could not copy {} to {}.",
-                                                  &ent_src_path, &ent_tar_path)));
+                    println!("Failed copying {}: Could not copy {} to {}.",
+                             &dotfile,
+                             &ent_src_path,
+                             &ent_tar_path);
                     continue;
                 }
-            }
-            else if src_meta.file_type().is_symlink() {
+            } else if src_meta.file_type().is_symlink() {
                 let _ = remove_file(&ent_tar_path);
                 let real_path = match read_link(&ent_src_path) {
                     Ok(rp) => rp,
                     Err(_) => {
-                        failed.push((dotfile, String::from("Could not resolve the \
-                                     symlink's path.")));
+                        println!("Failed copying {}: Could not resolve Symlink path.",
+                                 &dotfile);
                         continue;
-                    },
+                    }
                 };
                 if symlink(real_path, &ent_tar_path).is_err() {
-                    failed.push((dotfile, String::from("Could not create symlink.")));
+                    println!("Failed copying {}: Could not create symlink.", &dotfile);
                 }
             }
         }
-    }
-
-    for failure in failed {
-        println!("Failed copying {}: {}", failure.0, failure.1);
     }
 }
