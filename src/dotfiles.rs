@@ -44,6 +44,7 @@ pub fn load() {
                     println!("Failed copying {}: Could not create one or more directories \
                               required.",
                              &dotfile);
+                    continue;
                 }
             }
             if src_meta.is_file() {

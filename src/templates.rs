@@ -1,10 +1,10 @@
-use tera::Tera;
+use handlebars::Handlebars;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use utilities;
 
 pub fn load() {
-    let variables_context = match utilities::get_variables_context() {
+    let variables = match utilities::get_variables_json() {
         Some(c) => c,
         None => return,
     };
@@ -14,41 +14,50 @@ pub fn load() {
         None => return,
     };
 
-    let tera = Tera::new(format!("{}/templates/*", utilities::get_app_dir()).as_str());
-    for (template, path) in templates {
-        let path = match utilities::path_value_to_string(&path) {
+    for (template, tar_path) in templates {
+        let mut src_content = String::new();
+        let src_path = format!("{}/templates/{}", utilities::get_app_dir(), &template);
+        let _ = match File::open(&src_path) {
+            Ok(mut f) => f.read_to_string(&mut src_content),
+            Err(_) => {
+                println!("Failed copying {}: Unable to read source file", &template);
+                continue;
+            }
+        };
+
+        let tar_path = match utilities::path_value_to_string(&tar_path) {
             Some(s) => s,
             None => {
                 println!("Failed copying {}: {} is not a valid path String.",
                          &template,
-                         &path);
+                         &tar_path);
                 continue;
             }
         };
 
-        let render = match tera.render(&template, variables_context.clone()) {
-            Ok(r) => r,
+        let handlebars = Handlebars::new();
+        let rendered = match handlebars.template_render(&src_content, &variables) {
+            Ok(rendered_str) => rendered_str,
             Err(_) => {
-                println!("Failed copying {}: Unable to convert template.", &template);
+                println!("Failed copying {}: Unable to render template.", &template);
                 continue;
             }
         };
 
-        let create_dirs_success = utilities::create_directories_for_file(&path);
+        let create_dirs_success = utilities::create_directories_for_file(&tar_path);
         if !create_dirs_success {
             println!("Failed copying {}: Could not create one or more directories required.",
                      &template);
-
+            continue;
         }
 
-        let mut file = match File::create(&path) {
-            Ok(f) => f,
+        let _ = match File::create(&tar_path) {
+            Ok(mut f) => f.write_all(rendered.as_bytes()),
             Err(_) => {
                 println!("Failed copying {}: Could not create target file.",
                          &template);
                 continue;
             }
         };
-        let _ = file.write_all(render.as_bytes());
     }
 }

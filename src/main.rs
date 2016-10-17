@@ -1,9 +1,10 @@
 // TODO: (Optional) Add theme system
 // TODO: (Optional) Add globals with theme system
 // TODO: Add directory/symlink copy to templates and remove dotfiles.rs
+extern crate rustc_serialize;
+extern crate handlebars;
 extern crate walkdir;
 extern crate sqlite;
-extern crate tera;
 extern crate toml;
 
 mod templates;
@@ -20,5 +21,8 @@ fn main() {
     }
     if args.len() == 1 || args[1] == "--dotfiles" {
         dotfiles::load();
+    }
+    if args.len() == 1 || args[1] == "--sqldbs" {
+        sqldbs::load();
     }
 }

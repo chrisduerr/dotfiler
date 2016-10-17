@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["Undeadleech <programming@undeadleech.de", "matthunz(forked from ricinator) <matthunz2@gmail.com>"]
 
 [dependencies]
+rustc-serialize = "0.3"
+handlebars = "0.21"
 walkdir = "0.1"
 sqlite = "0.23"
-tera = "0.1"
 toml = "0.1"

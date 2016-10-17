@@ -1,8 +1,9 @@
-use tera::Context;
+use rustc_serialize::json::{Json, ToJson};
 use toml::{Parser, Table, Value};
 use std::env::{home_dir, current_exe};
-use std::path::Path;
 use std::fs::{File, create_dir_all};
+use std::collections::BTreeMap;
+use std::path::Path;
 use std::io::Read;
 
 pub fn load_from_toml(section: &str) -> Option<Table> {
@@ -15,28 +16,27 @@ pub fn load_from_toml(section: &str) -> Option<Table> {
         Some(t) => Some(t.clone()),
         None => {
             println!("{} section is missing or invalid.", section);
-            return None;
+            None
         }
     }
 }
 
-pub fn get_variables_context() -> Option<Context> {
+pub fn get_variables_json() -> Option<Json> {
     let variables = match load_from_toml("variables") {
         Some(t) => t,
         None => return None,
     };
 
-    let mut context = Context::new();
+    let mut variables_json: BTreeMap<String, Json> = BTreeMap::new();
     for (key, val) in variables {
-        match val.as_str() {
-            Some(val_str) => context.add(&key, &val_str),
-            None => {
-                println!("Failed parsing {}: Value is not a valid String.", key);
-                return None;
-            }
+        let val = match val.as_str() {
+            Some(val) => val,
+            None => return None,
         };
+        variables_json.insert(key, val.to_json());
     }
-    Some(context)
+
+    Some(variables_json.to_json())
 }
 
 pub fn path_value_to_string(path: &Value) -> Option<String> {
@@ -69,7 +69,7 @@ pub fn get_config() -> Option<Table> {
 
     match Parser::new(&buffer).parse() {
         Some(config) => Some(config),
-        None => return None,
+        None => None,
     }
 }
 
