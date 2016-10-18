@@ -84,13 +84,12 @@ fn render_db(db_path: &str, template_data: &Json) -> bool {
                     }
                 };
 
-                db_connection.execute(&format!("UPDATE {} SET {} = '{}' WHERE {} = '{}';",
-                                      table,
-                                      column,
-                                      new_entry,
-                                      column,
-                                      current_entry))
-                    .unwrap();
+                let _ = db_connection.execute(&format!("UPDATE {} SET {} = '{}' WHERE {} = '{}';",
+                                                       &table,
+                                                       &column,
+                                                       &new_entry,
+                                                       &column,
+                                                       &current_entry));
             }
         }
     }
