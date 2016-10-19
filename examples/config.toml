@@ -1,8 +1,5 @@
 [templates]
 xresources = "~/testing/MyXresourcesTemplate"
-
-[dotfiles]
-xresources = "~/testing/MyXresourcesDotfile"
 scripts = "~/testing/Scripts"
 
 [variables]
