@@ -1,5 +1,6 @@
 use rustc_serialize::json::{Json, ToJson};
 use toml::{Parser, Table, Value};
+use sqlite::{State, Connection};
 use std::env::{home_dir, current_exe};
 use std::fs::{File, create_dir_all};
 use std::collections::BTreeMap;
@@ -79,4 +80,30 @@ pub fn create_directories_for_file(file_path: &str) -> bool {
         None => return false,
     };
     create_dir_all(&create_dir_path).is_ok()
+}
+
+pub fn get_vec_from_db(db_conn: &Connection, query: &str, index: usize) -> Vec<String> {
+    let mut tables = Vec::new();
+    let mut statement = match db_conn.prepare(query) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    while let State::Row = match statement.next() {
+        Ok(o) => o,
+        Err(_) => return Vec::new(),
+    } {
+        match statement.read::<String>(index) {
+            Ok(s) => tables.push(s),
+            Err(_) => continue,
+        };
+    }
+
+    tables
+}
+
+pub fn fix_home_path(path: &str) -> String {
+    let mut fixed = path.replace("~", &get_home_dir());
+    fixed = fixed.replace("$HOME", &get_home_dir());
+    fixed
 }

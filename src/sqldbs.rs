@@ -1,6 +1,6 @@
 use rustc_serialize::json::Json;
 use handlebars::Handlebars;
-use sqlite::{State, Connection, open};
+use sqlite;
 use std::fs::copy;
 use utilities;
 
@@ -50,7 +50,7 @@ pub fn load() {
 }
 
 fn render_db(db_path: &str, template_data: &Json) -> bool {
-    let db_connection = match open(&db_path) {
+    let db_connection = match sqlite::open(&db_path) {
         Ok(db) => db,
         Err(_) => {
             println!("Could not find {}.", db_path);
@@ -58,17 +58,21 @@ fn render_db(db_path: &str, template_data: &Json) -> bool {
         }
     };
 
-    let tables = get_vec_from_db(&db_connection,
-                                 "SELECT tbl_name FROM sqlite_master WHERE type = 'table';",
-                                 0);
+    let tables = utilities::get_vec_from_db(&db_connection,
+                                            "SELECT tbl_name FROM sqlite_master WHERE type = \
+                                             'table';",
+                                            0);
 
     for table in tables {
-        let columns = get_vec_from_db(&db_connection, &format!("PRAGMA table_info({});", table), 1);
+        let columns = utilities::get_vec_from_db(&db_connection,
+                                                 &format!("PRAGMA table_info({});", table),
+                                                 1);
 
         for column in columns {
-            let current_entries = get_vec_from_db(&db_connection,
-                                                  &format!("SELECT {} FROM {};", column, table),
-                                                  0);
+            let current_entries =
+                utilities::get_vec_from_db(&db_connection,
+                                           &format!("SELECT {} FROM {};", column, table),
+                                           0);
 
             for current_entry in current_entries {
                 let current_entry = current_entry.replace("'", "''");
@@ -94,24 +98,4 @@ fn render_db(db_path: &str, template_data: &Json) -> bool {
         }
     }
     true
-}
-
-fn get_vec_from_db(db_conn: &Connection, query: &str, index: usize) -> Vec<String> {
-    let mut tables = Vec::new();
-    let mut statement = match db_conn.prepare(query) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-
-    while let State::Row = match statement.next() {
-        Ok(o) => o,
-        Err(_) => return Vec::new(),
-    } {
-        match statement.read::<String>(index) {
-            Ok(s) => tables.push(s),
-            Err(_) => continue,
-        };
-    }
-
-    tables
 }
