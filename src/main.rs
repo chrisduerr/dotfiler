@@ -1,6 +1,3 @@
-// TODO: (Optional) Add theme system
-// TODO: (Optional) Add globals with theme system
-// TODO: (Optional) Copy empty directories
 extern crate rustc_serialize;
 extern crate handlebars;
 extern crate walkdir;
