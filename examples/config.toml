@@ -1,6 +1,11 @@
-[templates]
-xresources = "~/testing/MyXresourcesTemplate"
-scripts = "~/testing/Scripts"
+templates = [
+    { source = "Xresources", target = "~/testing/MyXresourcesTemplate" },
+    { source = "Scripts", target = "~/testing/Scripts" }
+]
+
+sqldbs = [
+    { source = "db.sqlite", target = "~/testing/db.sqlite" }
+]
 
 [variables]
 fg = "#7e1a7e"

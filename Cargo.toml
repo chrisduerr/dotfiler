@@ -1,11 +1,12 @@
 [package]
 name = "dotfiler"
 version = "0.1.0"
-authors = ["Undeadleech <programming@undeadleech.de", "matthunz(forked from ricinator) <matthunz2@gmail.com>"]
+authors = ["Christian Dürr <copntact@christianduerr.com>"]
 
 [dependencies]
-rustc-serialize = "0.3"
-handlebars = "0.21"
-walkdir = "0.1"
-sqlite = "0.23"
-toml = "0.1"
+serde_derive = "0.9.10"
+handlebars = { version = "0.25.1", features = ["serde_type"] }
+walkdir = "1.0.7"
+serde = "0.9.10"
+clap = "2.20.5"
+toml = "0.3.1"
