@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate serde_derive;
 extern crate handlebars;
+extern crate rusqlite;
 extern crate walkdir;
 extern crate clap;
 extern crate toml;

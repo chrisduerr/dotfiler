@@ -2,6 +2,7 @@ use std::io::{self, Read, Write};
 use std::{fs, path, env};
 use std::os::unix;
 use handlebars;
+use rusqlite;
 use walkdir;
 use toml;
 
@@ -9,8 +10,7 @@ use error;
 
 #[derive(Deserialize)]
 pub struct Config {
-    pub templates: Option<Dotfile>,
-    pub sqldbs: Option<Dotfile>,
+    pub templates: Option<Vec<Dotfile>>,
     pub variables: toml::Value,
 }
 
@@ -21,8 +21,7 @@ pub struct Dotfile {
 }
 
 // TODO:
-// * Resolving the paths is currently not done nicely,
-//   this should be changed so the user can rely on basic shell expansions
+// * Implement SQLite dotfiling
 // * The "load" method is not tested yet
 pub fn load(target_path: &str,
             config_path: &str,
@@ -30,18 +29,25 @@ pub fn load(target_path: &str,
             copy_sqlite: bool)
             -> Result<(), error::DotfilerError> {
     let config = load_config(config_path)?;
+    let templates_dir = path::Path::new(&config_path)
+        .parent()
+        .ok_or(io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))?
+        .join("templates");
 
-    for template in config.templates {
-        let src_path = resolve_path(&template.source)?;
-        let tar_path = [target_path, &resolve_path(&template.target)?[1..]].concat();
-        load_file(&src_path,
-                  &tar_path,
-                  copy_files,
-                  copy_sqlite,
-                  &config.variables)?;
+    if let Some(templates) = config.templates {
+        for template in templates {
+            let src_str = templates_dir.join(&template.source).to_string_lossy().to_string();
+            let src_path = resolve_path(&src_str)?;
+            let tar_path = [target_path, &resolve_path(&template.target)?[1..]].concat();
+            load_file(&src_path,
+                      &tar_path,
+                      copy_files,
+                      copy_sqlite,
+                      &config.variables)?;
+        }
     }
 
-    unimplemented!();
+    Ok(())
 }
 
 pub fn get_working_dir() -> Result<String, io::Error> {
@@ -72,7 +78,7 @@ fn load_file(src_path: &str,
 
         if file_meta.is_file() {
             if is_sqlite(&file_src_path)? && copy_sqlite {
-                unimplemented!();
+                template_sqlite(&file_src_path, &file_tar_path, variables)?;
             } else if copy_files {
                 template_file(&file_src_path, &file_tar_path, variables)?;
             }
@@ -108,8 +114,67 @@ fn template_file(src_path: &str,
     Ok(())
 }
 
+// TODO: Make "?" work, never use format!!!
+fn template_sqlite(db_src_path: &str,
+                   db_tar_path: &str,
+                   variables: &toml::Value)
+                   -> Result<(), error::DotfilerError> {
+    // Copy the original db to the target location
+    fs::copy(db_src_path, db_tar_path)?;
+
+    let db_conn = rusqlite::Connection::open(&db_tar_path)?;
+    let mut stmt = db_conn.prepare("SELECT tbl_name FROM sqlite_master WHERE type = 'table'")?;
+    let mut tables = stmt.query(&[])?;
+
+    while let Some(Ok(table)) = tables.next() {
+        let table: String = match table.get_checked(0) {
+            Ok(table) => table,
+            Err(_) => continue,
+        };
+
+        // Use format because apparently this doesn't work with rusqlite and '?'
+        let mut stmt = db_conn.prepare(&format!("PRAGMA table_info({})", table))?;
+        let mut columns = stmt.query(&[])?;
+
+        while let Some(Ok(column)) = columns.next() {
+            let column: String = match column.get_checked(1) {
+                Ok(column) => column,
+                Err(_) => continue,
+            };
+
+            let mut stmt = db_conn.prepare(&format!("SELECT {} FROM {}", column, table))?;
+            let mut current_entries = stmt.query(&[])?;
+
+            while let Some(Ok(current_entry)) = current_entries.next() {
+                let mut current_entry: String = match current_entry.get_checked(0) {
+                    Ok(current_entry) => current_entry,
+                    Err(_) => continue,
+                };
+                current_entry = current_entry.replace("'", "''");
+
+                let handlebars = handlebars::Handlebars::new();
+                let new_entry = handlebars.template_render(&current_entry, variables)?;
+
+                db_conn.execute(&format!("UPDATE {} SET {}='{}' WHERE {}='{}'",
+                                      &table,
+                                      &column,
+                                      &new_entry,
+                                      &column,
+                                      &current_entry),
+                             &[])?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn is_sqlite(path: &str) -> Result<bool, io::Error> {
     let mut f = fs::File::open(path)?;
+    if f.metadata()?.len() < 6 {
+        return Ok(false);
+    }
+
     let mut buffer = [0; 6];
     f.read_exact(&mut buffer)?;
 
@@ -241,8 +306,20 @@ fn load_file_creating_directories() {
 
 #[test]
 fn load_correctly_saving_example_to_dummy_dir() {
-    load("./dummy/", "./examples/config.toml", true, true);
-    unimplemented!();
+    load("./dummy/",
+         "/home/undeadleech/Programming/Rust/dotfiler/examples/config.toml",
+         true,
+         true)
+        .unwrap();
+
+    assert_eq!(fs::metadata("./dummy/home/undeadleech/testing/MyXresourcesTemplate").is_ok(),
+               true);
+    assert_eq!(fs::metadata("./dummy/home/undeadleech/testing/Scripts").is_ok(),
+               true);
+    assert_eq!(fs::metadata("./dummy/home/undeadleech/testing/db.sqlite").is_ok(),
+               true);
+
+    // fs::remove_dir_all("./dummy/").unwrap(); // Make sure dir always is deleted
 }
 
 // This obviously only works on my machine / with my username
