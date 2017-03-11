@@ -1,44 +1,31 @@
 use std::io::{self, Read, Write};
 use std::{fs, path, env};
+use toml::{self, value};
 use std::os::unix;
 use handlebars;
-use rusqlite;
 use walkdir;
-use toml;
 
+use common;
 use error;
 
-#[derive(Deserialize)]
-pub struct Config {
-    pub templates: Option<Vec<Dotfile>>,
-    pub variables: toml::Value,
-}
-
-#[derive(Deserialize)]
-pub struct Dotfile {
-    pub source: String,
-    pub target: String,
-}
-
-// TODO:
-// * Implement SQLite dotfiling
-// * The "load" method is not tested yet
+// TODO: Rename source to template
+// TODO: Don't just die if target or template directories could not be found
 pub fn load(target_path: &str,
             config_path: &str,
             copy_files: bool,
             copy_sqlite: bool)
             -> Result<(), error::DotfilerError> {
-    let config = load_config(config_path)?;
-    let templates_dir = path::Path::new(&config_path)
+    let config = common::load_config(config_path)?;
+    let templates_dir = path::Path::new(config_path)
         .parent()
-        .ok_or(io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))?
         .join("templates");
 
-    if let Some(templates) = config.templates {
+    if let Some(ref templates) = config.templates {
         for template in templates {
-            let src_str = templates_dir.join(&template.source).to_string_lossy().to_string();
-            let src_path = resolve_path(&src_str)?;
-            let tar_path = [target_path, &resolve_path(&template.target)?[1..]].concat();
+            let src_str = templates_dir.join(&template.template).to_string_lossy().to_string();
+            let src_path = common::resolve_path(&src_str)?;
+            let tar_path = [target_path, &common::resolve_path(&template.target)?[1..]].concat();
             load_file(&src_path,
                       &tar_path,
                       copy_files,
@@ -46,6 +33,11 @@ pub fn load(target_path: &str,
                       &config.variables)?;
         }
     }
+
+    // Save the config as old.toml
+    let config_str = toml::to_string(&config)?;
+    let old_config_path = templates_dir.join("old.toml").to_string_lossy().to_string();
+    fs::File::create(&old_config_path)?.write_all(config_str.as_bytes())?;
 
     Ok(())
 }
@@ -60,7 +52,7 @@ fn load_file(src_path: &str,
              tar_path: &str,
              copy_files: bool,
              copy_sqlite: bool,
-             variables: &toml::Value)
+             variables: &value::Table)
              -> Result<(), error::DotfilerError> {
     for file in walkdir::WalkDir::new(src_path).into_iter().filter_map(|e| e.ok()) {
         let file_src_path = file.path().to_string_lossy().to_string();
@@ -77,7 +69,7 @@ fn load_file(src_path: &str,
         }
 
         if file_meta.is_file() {
-            if is_sqlite(&file_src_path)? && copy_sqlite {
+            if common::is_sqlite(&file_src_path)? && copy_sqlite {
                 template_sqlite(&file_src_path, &file_tar_path, variables)?;
             } else if copy_files {
                 template_file(&file_src_path, &file_tar_path, variables)?;
@@ -99,7 +91,7 @@ fn load_file(src_path: &str,
 
 fn template_file(src_path: &str,
                  tar_path: &str,
-                 variables: &toml::Value)
+                 variables: &value::Table)
                  -> Result<(), error::DotfilerError> {
     let mut file_content = String::new();
     fs::File::open(src_path)?.read_to_string(&mut file_content)?;
@@ -117,96 +109,17 @@ fn template_file(src_path: &str,
 // TODO: Make "?" work, never use format!!!
 fn template_sqlite(db_src_path: &str,
                    db_tar_path: &str,
-                   variables: &toml::Value)
+                   variables: &value::Table)
                    -> Result<(), error::DotfilerError> {
     // Copy the original db to the target location
     fs::copy(db_src_path, db_tar_path)?;
 
-    let db_conn = rusqlite::Connection::open(&db_tar_path)?;
-    let mut stmt = db_conn.prepare("SELECT tbl_name FROM sqlite_master WHERE type = 'table'")?;
-    let mut tables = stmt.query(&[])?;
+    fn modify(entry: &str, variables: &value::Table) -> Result<String, error::DotfilerError> {
+        let handlebars = handlebars::Handlebars::new();
+        Ok(handlebars.template_render(entry, variables)?)
+    };
 
-    while let Some(Ok(table)) = tables.next() {
-        let table: String = match table.get_checked(0) {
-            Ok(table) => table,
-            Err(_) => continue,
-        };
-
-        // Use format because apparently this doesn't work with rusqlite and '?'
-        let mut stmt = db_conn.prepare(&format!("PRAGMA table_info({})", table))?;
-        let mut columns = stmt.query(&[])?;
-
-        while let Some(Ok(column)) = columns.next() {
-            let column: String = match column.get_checked(1) {
-                Ok(column) => column,
-                Err(_) => continue,
-            };
-
-            let mut stmt = db_conn.prepare(&format!("SELECT {} FROM {}", column, table))?;
-            let mut current_entries = stmt.query(&[])?;
-
-            while let Some(Ok(current_entry)) = current_entries.next() {
-                let mut current_entry: String = match current_entry.get_checked(0) {
-                    Ok(current_entry) => current_entry,
-                    Err(_) => continue,
-                };
-                current_entry = current_entry.replace("'", "''");
-
-                let handlebars = handlebars::Handlebars::new();
-                let new_entry = handlebars.template_render(&current_entry, variables)?;
-
-                db_conn.execute(&format!("UPDATE {} SET {}='{}' WHERE {}='{}'",
-                                      &table,
-                                      &column,
-                                      &new_entry,
-                                      &column,
-                                      &current_entry),
-                             &[])?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn is_sqlite(path: &str) -> Result<bool, io::Error> {
-    let mut f = fs::File::open(path)?;
-    if f.metadata()?.len() < 6 {
-        return Ok(false);
-    }
-
-    let mut buffer = [0; 6];
-    f.read_exact(&mut buffer)?;
-
-    if String::from_utf8_lossy(&buffer) == String::from("SQLite") {
-        Ok(true)
-    } else {
-        Ok(false)
-    }
-}
-
-fn load_config(config_path: &str) -> Result<Config, error::DotfilerError> {
-    let config_path = resolve_path(config_path)?;
-    let mut buffer = String::new();
-    fs::File::open(config_path)?.read_to_string(&mut buffer)?;
-    Ok(toml::from_str(&buffer)?)
-}
-
-// Rust can't deal with "~", "$HOME" or relative paths, this takes care of that
-fn resolve_path(path: &str) -> Result<String, error::DotfilerError> {
-    if path.starts_with("$HOME") {
-        Ok(get_home_dir()? + &path[5..])
-    } else if path.starts_with("~") {
-        Ok(get_home_dir()? + &path[1..])
-    } else {
-        Ok(path.to_string())
-    }
-}
-
-fn get_home_dir() -> Result<String, io::Error> {
-    let home_dir = env::home_dir()
-        .ok_or(io::Error::new(io::ErrorKind::NotFound, "Unable to locate home directory."))?;
-    Ok(home_dir.to_string_lossy().to_string())
+    common::modify_sqlite_elements(db_tar_path, modify, variables)
 }
 
 
@@ -216,41 +129,25 @@ fn get_home_dir() -> Result<String, io::Error> {
 // -------------
 
 #[cfg(test)]
-#[derive(Serialize)]
-pub struct World {
-    pub world: String,
-}
+use std::collections::BTreeMap;
 
 #[cfg(test)]
-fn setup(src_path: &str) -> toml::Value {
+fn setup(src_path: &str) -> value::Table {
     let input = "Hello, {{ world }}!";
     let mut f = fs::File::create(src_path).unwrap();
     f.write_all(&input.as_bytes()).unwrap();
     f.sync_all().unwrap();
 
-    let var = World { world: String::from("world") };
-    toml::Value::try_from(var).unwrap()
+    let mut map = BTreeMap::new();
+    map.insert(String::from("world"),
+               toml::Value::String(String::from("World")));
+    map
 }
 
 #[cfg(test)]
 fn teardown(src_path: &str, tar_path: &str) {
     fs::remove_file(src_path).unwrap();
     fs::remove_file(tar_path).unwrap();
-}
-
-#[test]
-fn is_sqlite_with_non_sqlite_file_is_true() {
-    assert_eq!(is_sqlite("./examples/templates/db.sqlite").unwrap(), true);
-}
-
-#[test]
-fn is_sqlite_with_non_sqlite_file_is_false() {
-    assert_eq!(is_sqlite("./examples/templates/Xresources").unwrap(), false);
-}
-
-#[test]
-fn is_sqlite_with_non_existing_file_is_error() {
-    assert_eq!(is_sqlite("./this/doesnt/exist").is_err(), true);
 }
 
 #[test]
@@ -267,7 +164,7 @@ fn template_file_correctly_rendering_string_to_text() {
 
     teardown(src_path, tar_path);
 
-    assert_eq!(output, String::from("Hello, world!"));
+    assert_eq!(output, String::from("Hello, World!"));
 }
 
 #[test]
@@ -284,7 +181,7 @@ fn load_file_correctly_loading_single_file() {
 
     teardown(src_path, tar_path);
 
-    assert_eq!(output, String::from("Hello, world!"));
+    assert_eq!(output, String::from("Hello, World!"));
 }
 
 #[test]
@@ -301,7 +198,7 @@ fn load_file_creating_directories() {
 
     teardown(src_path, tar_path);
 
-    assert_eq!(output, String::from("Hello, world!"));
+    assert_eq!(output, String::from("Hello, World!"));
 }
 
 #[test]
@@ -312,7 +209,7 @@ fn load_correctly_saving_example_to_dummy_dir() {
          true)
         .unwrap();
 
-    assert_eq!(fs::metadata("./dummy/home/undeadleech/testing/MyXresourcesTemplate").is_ok(),
+    assert_eq!(fs::metadata("./dummy/home/undeadleech/testing/Xresources").is_ok(),
                true);
     assert_eq!(fs::metadata("./dummy/home/undeadleech/testing/Scripts").is_ok(),
                true);
@@ -322,31 +219,10 @@ fn load_correctly_saving_example_to_dummy_dir() {
     // fs::remove_dir_all("./dummy/").unwrap(); // Make sure dir always is deleted
 }
 
-// This obviously only works on my machine / with my username
-#[test]
-fn home_dir_is_undeadleech() {
-    assert_eq!(get_home_dir().unwrap(), String::from("/home/undeadleech"));
-}
-
 // This doesn't even work if you're called undeadleech
 // You need the exact same folder structure I have
 #[test]
 fn working_dir_is_programming_rust_dotfiler() {
     assert_eq!(get_working_dir().unwrap(),
                String::from("/home/undeadleech/Programming/Rust/dotfiler/target/debug/deps"));
-}
-
-// Again, this requires the user to be undeadleech
-#[test]
-fn resolve_home_path() {
-    assert_eq!(resolve_path("~/Programming").unwrap(),
-               "/home/undeadleech/Programming");
-    assert_eq!(resolve_path("$HOME/Programming").unwrap(),
-               "/home/undeadleech/Programming");
-}
-
-// Finally something that doesn't rely on anything
-#[test]
-fn resolve_root_path() {
-    assert_eq!(resolve_path("/root/test").unwrap(), "/root/test");
 }
