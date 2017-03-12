@@ -1,11 +1,14 @@
 use std::io::{self, Read, Write};
 use std::{fs, path};
+use std::os::unix;
 use toml::value;
+use walkdir;
 
 use common;
 use error;
 
-// TODO: Test
+// TODO: Directories not working, copy them and test it
+// TODO: Remove this as a general step and make it optional and an explicit command
 pub fn create_templates(config_path: &str) -> Result<(), error::DotfilerError> {
     let templates_dir = path::Path::new(config_path)
         .parent()
@@ -39,19 +42,65 @@ pub fn create_file_template(template_path: &str,
                             tar_path: &str,
                             variables: &value::Table)
                             -> Result<(), error::DotfilerError> {
-    let mut content = String::new();
-    fs::File::open(tar_path)?.read_to_string(&mut content)?;
+    for file in walkdir::WalkDir::new(template_path).into_iter().filter_map(|e| e.ok()) {
+        let file_template_path = file.path().to_string_lossy().to_string();
+        let file_tar_path = [tar_path, &file_template_path[template_path.len()..]].concat();
 
-    for (key, val) in variables {
-        let val_str = val.as_str()
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput,
-                               format!("Variable \"{}\" is not a String.", key))
-            })?;
-        content = content.replace(val_str, &format!("{{{{ {} }}}}", key));
+        let file_meta = match fs::symlink_metadata(&file_tar_path) {
+            Ok(meta) => meta,
+            Err(e) => {
+                println!("Unable to get metadata for {}\n{}", file_tar_path, e);
+                continue;
+            }
+        };
+
+        // Create directories if current element is somethig that needs to be copied
+        if file_meta.is_file() || file_meta.file_type().is_symlink() {
+            // If there is no parent the file sits in root and that always exists
+            if let Some(parent_path) = path::Path::new(&file_template_path).parent() {
+                if let Err(e) = fs::create_dir_all(&parent_path) {
+                    println!("Unable to create directories {:?}\n{}", parent_path, e);
+                }
+            }
+        }
+
+        if file_meta.is_file() {
+            let mut content = String::new();
+            fs::File::open(tar_path)?.read_to_string(&mut content)?;
+
+            for (key, val) in variables {
+                let val_str = val.as_str()
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput,
+                                       format!("Variable \"{}\" is not a String.", key))
+                    })?;
+                content = content.replace(val_str, &format!("{{{{ {} }}}}", key));
+            }
+
+            fs::File::create(template_path)?.write_all(content.as_bytes())?;
+        } else if file_meta.file_type().is_symlink() {
+            // Remove file because overwriting smylinks is impossible
+            if let Err(err) = fs::remove_file(&file_template_path) {
+                if err.kind() != io::ErrorKind::NotFound {
+                    println!("Unable to delete symlink {}\n{}", file_template_path, err);
+                }
+            }
+
+            let symlink_tar_path = match fs::read_link(&file_tar_path) {
+                Ok(sym) => sym,
+                Err(e) => {
+                    println!("Unable to read symlink {}\n{}", file_tar_path, e);
+                    continue;
+                }
+            };
+
+            if let Err(e) = unix::fs::symlink(&symlink_tar_path, &file_template_path) {
+                println!("Unable to create symlink {}\n{}", file_template_path, e);
+            }
+        }
     }
 
-    Ok(fs::File::create(template_path)?.write_all(content.as_bytes())?)
+    Ok(())
 }
 
 pub fn create_sqlite_template(template_path: &str,
@@ -105,4 +154,17 @@ fn create_file_template_correctly_creating_file_template() {
     let _ = fs::remove_file(template_path);
 
     assert_eq!(output, "test: {{ test }}");
+}
+
+#[test]
+fn directories_are_copied_correctly() {
+    let tar_path = "directories_are_copied_correctly_tar/";
+    let template_path = "directories_are_copied_correctly_template/";
+
+    fs::create_dir_all([tar_path, "/xyz"].concat()).unwrap();
+    let vars = BTreeMap::new();
+
+    create_file_template(template_path, tar_path, &vars).unwrap();
+
+    assert_eq!(fs::metadata([template_path, "/xyz"].concat()).is_ok(), true);
 }

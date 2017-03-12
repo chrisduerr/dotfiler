@@ -14,7 +14,7 @@ mod common;
 mod error;
 
 // TODO: Don't unwrap
-// TODO: Better errors
+// TODO: Better errors for users
 // TODO: templates_dir is used three times and too complex
 // TODO: Add "add" command for adding stuff without having to modify config
 fn main() {
