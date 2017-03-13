@@ -6,9 +6,7 @@ extern crate walkdir;
 extern crate clap;
 extern crate toml;
 
-use std::{io, fs, path};
-
-mod template_creator;
+mod add_template;
 mod templates;
 mod common;
 mod error;
@@ -39,30 +37,42 @@ fn main() {
             .long("config")
             .help("An alternative location for the config file. The default is './config.toml'")
             .value_name("FILE"))
-        .arg(clap::Arg::with_name("create-templates")
-            .long("create-templates")
-            .help("Load the current files as templates without applying new config changes.")
-            .conflicts_with_all(&["no-files", "no-sqlite", "dry"]))
+        .subcommand(clap::SubCommand::with_name("add")
+            .about("Add new directories, symlinks or files to your dotfiles.")
+            .version("0.1.0")
+            .author("Christian Dürr <contact@christianduerr>")
+            .arg(clap::Arg::with_name("file")
+                .help("File, directory or symlink you want to add.")
+                .required(true)
+                .index(1))
+            .arg(clap::Arg::with_name("config")
+                .short("c")
+                .long("config")
+                .help("An alternative location for the config file. The default is \
+                       './config.toml'")
+                .value_name("FILE"))
+            .arg(clap::Arg::with_name("no-templating")
+                .long("no-templating")
+                .help("Do not replace Strings in the files with matching variables from config.")))
         .get_matches();
 
-    let config_path = if let Some(config_path) = args.value_of("config") {
-        config_path
+    if let Some(args) = args.subcommand_matches("add") {
+        let config_path = if let Some(config_path) = args.value_of("config") {
+            config_path
+        } else {
+            "./config.toml"
+        };
+
+        let templating_enabled = !args.is_present("no-templating");
+        let file = args.value_of("file").unwrap(); // Safe because required
+        add_template::add_template(config_path, file, templating_enabled).unwrap();
     } else {
-        "./config.toml"
-    };
+        let config_path = if let Some(config_path) = args.value_of("config") {
+            config_path
+        } else {
+            "./config.toml"
+        };
 
-    // Create templates dir if not existing
-    let templates_dir = path::Path::new(config_path)
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))
-        .unwrap()
-        .join("templates");
-    fs::create_dir_all(templates_dir).unwrap();
-
-    // Create templated files from "old.toml"
-    template_creator::create_templates(config_path).unwrap();
-
-    if !args.is_present("create-templates") {
         let root_path = if args.is_present("dry") {
             [&templates::get_working_dir().unwrap(), "dry/"].concat()
         } else {

@@ -1,6 +1,13 @@
-templates = [ { template = "Xresources", target = "~/testing/Xresources" },
-              { template = "db.sqlite", target = "~/testing/db.sqlite" },
-              { template = "Scripts", target = "~/testing/Scripts" } ]
+[[templates]]
+template = "Xresources"
+target = "~/testing/Xresources"
+[[templates]]
+template = "db.sqlite"
+target = "~/testing/db.sqlite"
+[[templates]]
+template = "Scripts"
+target = "~/testing/Scripts"
 
 [variables]
 fg = "#7e1a7e"
+test = "#1b1b1b"
