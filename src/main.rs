@@ -11,10 +11,8 @@ mod templates;
 mod common;
 mod error;
 
-// TODO: Don't unwrap
 // TODO: Better errors for users
-// TODO: templates_dir is used three times and too complex
-// TODO: Add "add" command for adding stuff without having to modify config
+// TODO: No logging required Errors should never reach main.rs (so no unwrap required)
 fn main() {
     let args = clap::App::new("Dotfiler")
         .version("0.1.0")
@@ -45,6 +43,10 @@ fn main() {
                 .help("File, directory or symlink you want to add.")
                 .required(true)
                 .index(1))
+            .arg(clap::Arg::with_name("name")
+                .short("n")
+                .long("name")
+                .help("An alternative name for the new template file."))
             .arg(clap::Arg::with_name("config")
                 .short("c")
                 .long("config")
@@ -57,31 +59,30 @@ fn main() {
         .get_matches();
 
     if let Some(args) = args.subcommand_matches("add") {
-        let config_path = if let Some(config_path) = args.value_of("config") {
-            config_path
-        } else {
-            "./config.toml"
-        };
-
+        // Safe because "file" is required
+        let file = args.value_of("file").unwrap();
+        let config_path = get_config_dir(args.value_of("config"));
         let templating_enabled = !args.is_present("no-templating");
-        let file = args.value_of("file").unwrap(); // Safe because required
-        add_template::add_template(config_path, file, templating_enabled).unwrap();
-    } else {
-        let config_path = if let Some(config_path) = args.value_of("config") {
-            config_path
-        } else {
-            "./config.toml"
-        };
+        let new_name = args.value_of("name");
 
+        add_template::add_template(&config_path, file, new_name, templating_enabled).unwrap();
+    } else {
+        let config_path = get_config_dir(args.value_of("config"));
+        let copy_sqlite = !args.is_present("no-sqlite");
+        let copy_files = !args.is_present("no-files");
         let root_path = if args.is_present("dry") {
-            [&templates::get_working_dir().unwrap(), "dry/"].concat()
+            [&common::get_working_dir().unwrap(), "dry/"].concat()
         } else {
             String::from("/")
         };
 
-        let copy_files = !args.is_present("no-files");
-        let copy_sqlite = !args.is_present("no-sqlite");
+        templates::load(&root_path, &config_path, copy_files, copy_sqlite).unwrap();
+    }
+}
 
-        templates::load(&root_path, config_path, copy_files, copy_sqlite).unwrap();
+fn get_config_dir(config: Option<&str>) -> String {
+    match config {
+        Some(config) => config.to_string(),
+        None => String::from("./config.toml"),
     }
 }

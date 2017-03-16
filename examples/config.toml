@@ -1,10 +1,10 @@
-[[templates]]
+[[dotfiles]]
 template = "Xresources"
 target = "~/testing/Xresources"
-[[templates]]
+[[dotfiles]]
 template = "db.sqlite"
 target = "~/testing/db.sqlite"
-[[templates]]
+[[dotfiles]]
 template = "Scripts"
 target = "~/testing/Scripts"
 

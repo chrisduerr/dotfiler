@@ -1,6 +1,6 @@
 use std::io::{self, Read, Write};
-use std::{fs, path, env};
 use toml::{self, value};
+use std::{fs, path};
 use std::os::unix;
 use handlebars;
 use walkdir;
@@ -9,42 +9,32 @@ use common;
 use error;
 
 // TODO: Don't just die if target or template directories could not be found
+// TODO: Switch to transactional system with caching (/backups) to ensure safety
 pub fn load(target_path: &str,
             config_path: &str,
             copy_files: bool,
             copy_sqlite: bool)
             -> Result<(), error::DotfilerError> {
     let config = common::load_config(config_path)?;
-    let templates_dir = path::Path::new(config_path)
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))?
-        .join("templates");
+    let templates_path = common::get_templates_path(config_path)?;
 
-    if let Some(ref templates) = config.templates {
-        for template in templates {
-            let template_str = templates_dir.join(&template.template).to_string_lossy().to_string();
-            let template_path = common::resolve_path(&template_str)?;
-            let tar_path = [target_path, &common::resolve_path(&template.target)?[1..]].concat();
-            load_file(&template_path,
-                      &tar_path,
-                      copy_files,
-                      copy_sqlite,
-                      &config.variables)?;
-        }
+    for dotfile in &config.dotfiles {
+        let template_str = templates_path.join(&dotfile.template).to_string_lossy().to_string();
+        let template_path = common::resolve_path(&template_str)?;
+        let tar_path = [target_path, &common::resolve_path(&dotfile.target)?[1..]].concat();
+        load_file(&template_path,
+                  &tar_path,
+                  copy_files,
+                  copy_sqlite,
+                  &config.variables)?;
     }
 
     // Save the config as old.toml
     let config_str = toml::to_string(&config)?;
-    let old_config_path = templates_dir.join("old.toml").to_string_lossy().to_string();
+    let old_config_path = templates_path.join("old.toml").to_string_lossy().to_string();
     fs::File::create(&old_config_path)?.write_all(config_str.as_bytes())?;
 
     Ok(())
-}
-
-pub fn get_working_dir() -> Result<String, io::Error> {
-    let mut app_dir = env::current_exe()?;
-    app_dir.pop();
-    Ok(app_dir.to_string_lossy().to_string())
 }
 
 fn load_file(template_path: &str,
@@ -248,6 +238,6 @@ fn load_correctly_saving_example_to_dummy_dir() {
 // You need the exact same folder structure I have
 #[test]
 fn working_dir_is_programming_rust_dotfiler() {
-    assert_eq!(get_working_dir().unwrap(),
+    assert_eq!(common::get_working_dir().unwrap(),
                String::from("/home/undeadleech/Programming/Rust/dotfiler/target/debug/deps"));
 }

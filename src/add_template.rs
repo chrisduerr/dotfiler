@@ -10,17 +10,14 @@ use error;
 
 // TODO: Don't make any changes if one file template fails
 // TODO: Don't edit the config if one file fails
-// TODO: Make sure things aren't added multiple times to config, overwrite other item?
-// TODO: Add option to rename file/directory (flag?)
+// TODO: Implement option to rename file/directory (flag?)
 pub fn add_template(config_path: &str,
                     file_path: &str,
+                    new_name: Option<&str>,
                     templating_enabled: bool)
                     -> Result<(), error::DotfilerError> {
     let mut config = common::load_config(config_path)?;
-    let templates_path = path::Path::new(config_path)
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))?
-        .join("templates");
+    let templates_path = common::get_templates_path(config_path)?;
     let tar_prefix = path::Path::new(file_path)
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))?
@@ -31,6 +28,10 @@ pub fn add_template(config_path: &str,
         let file_template_path = templates_path.join(&file_tar_path[tar_prefix.len() + 1..])
             .to_string_lossy()
             .to_string();
+
+        if template_exists_already(&config.dotfiles, &file_template_path, &file_tar_path)? {
+            Err(io::Error::new(io::ErrorKind::AlreadyExists, "Dotfile already exists."))?;
+        }
 
         let file_meta = match fs::symlink_metadata(&file_path) {
             Ok(meta) => meta,
@@ -99,20 +100,35 @@ pub fn add_template(config_path: &str,
         }
     }
 
-    let template_path = templates_path.join(file_path).to_string_lossy().to_string();
+    let template_path = templates_path.join(&file_path[tar_prefix.len() + 1..])
+        .to_string_lossy()
+        .to_string();
     let dotfile = common::Dotfile {
         template: template_path,
         target: file_path.to_string(),
     };
 
-    if let Some(ref mut templates) = config.templates {
-        templates.push(dotfile);
-    }
+    config.dotfiles.push(dotfile);
 
     let new_config_content = toml::to_string(&config)?;
     fs::File::create(&config_path)?.write_all(new_config_content.as_bytes())?;
 
     Ok(())
+}
+
+fn template_exists_already(dotfiles: &Vec<common::Dotfile>,
+                           template_path: &str,
+                           tar_path: &str)
+                           -> Result<bool, error::DotfilerError> {
+    for dotfile in dotfiles {
+        let existing_template_path = common::resolve_path(&dotfile.template)?;
+        let existing_tar_path = common::resolve_path(&dotfile.target)?;
+        if existing_template_path == template_path && existing_tar_path == tar_path {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 fn create_file_template(template_path: &str,
@@ -170,13 +186,13 @@ fn directories_are_copied_correctly() {
     fs::create_dir_all([tar_path, "/xyz"].concat()).unwrap();
 
     let config = common::Config {
-        templates: None,
+        dotfiles: None,
         variables: BTreeMap::new(),
     };
     let config_content = toml::to_string(&config).unwrap();
     fs::File::create("tmp_config.toml").unwrap().write_all(config_content.as_bytes()).unwrap();
 
-    add_template("tmp_config.toml", tar_path, false).unwrap();
+    add_template("tmp_config.toml", tar_path, None, false).unwrap();
 
     let dir_exists = fs::metadata([template_path, "/xyz"].concat()).is_ok();
 
