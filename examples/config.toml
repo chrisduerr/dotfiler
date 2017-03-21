@@ -2,11 +2,11 @@
 template = "Xresources"
 target = "~/testing/Xresources"
 [[dotfiles]]
-template = "db.sqlite"
-target = "~/testing/db.sqlite"
-[[dotfiles]]
 template = "Scripts"
 target = "~/testing/Scripts"
+[[dotfiles]]
+template = "config"
+target = "~/testing/config"
 
 [variables]
 fg = "#7e1a7e"

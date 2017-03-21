@@ -1,12 +1,13 @@
 #[macro_use]
 extern crate serde_derive;
 extern crate handlebars;
-extern crate rusqlite;
+extern crate tempfile;
 extern crate walkdir;
 extern crate clap;
 extern crate toml;
 
 mod add_template;
+mod filesystem;
 mod templates;
 mod common;
 mod error;

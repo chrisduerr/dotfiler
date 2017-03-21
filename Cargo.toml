@@ -6,7 +6,7 @@ authors = ["Christian Dürr <copntact@christianduerr.com>"]
 [dependencies]
 handlebars = { version = "0.25.1", features = ["serde_type"] }
 serde_derive = "0.9.10"
-rusqlite = "0.10.1"
+tempfile = "2.1.5"
 walkdir = "1.0.7"
 serde = "0.9.10"
 clap = "2.20.5"
