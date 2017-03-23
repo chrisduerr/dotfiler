@@ -1,11 +1,12 @@
 use std::io::{self, Read, Write};
+use std::{fs, path};
 use std::os::unix;
 use toml::value;
 use handlebars;
 use tempfile;
-use std::fs;
 use walkdir;
 
+use common;
 use error;
 
 // TODO: Add SQLite templating again!
@@ -13,8 +14,11 @@ use error;
 pub fn create_tree_from_path(src_path: &str,
                              tar_path: &str)
                              -> Result<Box<File>, error::DotfilerError> {
-    let filetype = fs::symlink_metadata(src_path)?.file_type();
-    Ok(file_from_filetype(&filetype, src_path, tar_path)?)
+    let src_path = common::resolve_path(src_path)?;
+    let tar_path = common::resolve_path(tar_path)?;
+
+    let filetype = fs::symlink_metadata(&src_path)?.file_type();
+    Ok(file_from_filetype(&filetype, &src_path, &tar_path)?)
 }
 
 fn file_from_filetype(filetype: &fs::FileType,
@@ -51,7 +55,7 @@ impl Directory {
         for file in walkdir::WalkDir::new(&file_path).into_iter().filter_map(|e| e.ok()) {
             let file_str = file.path().to_string_lossy();
             if file_str != file_path {
-                let file_tar_path = &file_str[target_path.len()..];
+                let file_tar_path = [target_path, &file_str[file_path.len()..]].concat();
 
                 // Create specific File for every FileType possible
                 let filetype = file.file_type();
@@ -203,41 +207,43 @@ impl File for TextFile {
 
 struct Symlink {
     target: String,
-    old_target: String,
     target_path: String,
+    backup_path: String,
     existed_already: bool,
 }
 
 impl Symlink {
     fn new(file_path: &str, target_path: &str) -> Result<Symlink, error::DotfilerError> {
+        // Copy old symlink to backup location
+        let mut existed_already = true;
+        let backup_path = &["./cache", file_path].concat();
+        if let Err(error::DotfilerError::IoError(e)) = copy_symlink(file_path, backup_path) {
+            if e.kind() == io::ErrorKind::NotFound {
+                existed_already = false;
+            } else {
+                Err(e)?;
+            }
+        }
+
         let symlink_tar_path = fs::read_link(&file_path)?;
 
         Ok(Symlink {
                target: symlink_tar_path.to_string_lossy().to_string(),
-               old_target: String::new(),
                target_path: target_path.to_string(),
-               existed_already: true,
+               backup_path: backup_path.to_string(),
+               existed_already: existed_already,
            })
     }
 }
 
 impl File for Symlink {
     fn save(&mut self) -> Result<(), error::DotfilerError> {
-        // Delete old symlink because symlinks can't be overwritten
-        if let Err(err) = fs::remove_file(&self.target_path) {
-            if err.kind() != io::ErrorKind::NotFound {
-                Err(err)?;
-            } else {
-                self.existed_already = false;
-            }
-        } else {
-            self.old_target = fs::read_link(&self.target_path)?.to_string_lossy().to_string();
+        if self.existed_already {
+            fs::remove_file(&self.target_path)?;
         }
 
-        // Create new symlink
-        unix::fs::symlink(&self.target, &self.target_path)?;
-
-        Ok(())
+        // Create symlink
+        Ok(unix::fs::symlink(&self.target, &self.target_path)?)
     }
 
     fn restore(&self) -> Result<(), error::DotfilerError> {
@@ -245,7 +251,7 @@ impl File for Symlink {
             fs::remove_file(&self.target_path)?;
         } else {
             let _ = fs::remove_file(&self.target_path);
-            unix::fs::symlink(&self.old_target, &self.target_path)?;
+            copy_symlink(&self.backup_path, &self.target_path)?;
         }
 
         Ok(())
@@ -290,4 +296,20 @@ impl File for SQLite {
     fn template(&mut self, variables: &value::Table) -> Result<(), error::DotfilerError> {
         unimplemented!();
     }
+}
+
+// Copy a symlink overwriting any existing file at "tar"
+fn copy_symlink(src: &str, tar: &str) -> Result<(), error::DotfilerError> {
+    // Read src target link
+    let src_target = fs::read_link(src)?.to_string_lossy().to_string();
+
+    // Create required directories
+    let parent_path = path::Path::new(tar).parent().ok_or(String::from("Cannot symlink to root."))?;
+    fs::create_dir_all(&parent_path.to_string_lossy().to_string())?;
+
+    // Try delete old symlink because symlinks can't be overwritten
+    let _ = fs::remove_file(tar);
+
+    // Create new symlink
+    Ok(unix::fs::symlink(&src_target, tar).unwrap())
 }

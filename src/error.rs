@@ -4,6 +4,7 @@ use toml;
 
 #[derive(Debug)]
 pub enum DotfilerError {
+    Message(String),
     IoError(io::Error),
     TomlError(toml::de::Error),
     TomlSerializerError(toml::ser::Error),
@@ -13,6 +14,7 @@ pub enum DotfilerError {
 impl fmt::Display for DotfilerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            DotfilerError::Message(ref err) => write!(f, "{}", err),
             DotfilerError::IoError(ref err) => write!(f, "IO error: {}", err),
             DotfilerError::TomlError(ref err) => write!(f, "Toml error: {}", err),
             DotfilerError::TemplateRenderError(ref err) => write!(f, "Template error: {}", err),
@@ -24,6 +26,7 @@ impl fmt::Display for DotfilerError {
 impl error::Error for DotfilerError {
     fn description(&self) -> &str {
         match *self {
+            DotfilerError::Message(ref err) => err,
             DotfilerError::IoError(ref err) => err.description(),
             DotfilerError::TomlError(ref err) => err.description(),
             DotfilerError::TemplateRenderError(ref err) => err.description(),
@@ -33,6 +36,7 @@ impl error::Error for DotfilerError {
 
     fn cause(&self) -> Option<&error::Error> {
         match *self {
+            DotfilerError::Message(ref err) => None,
             DotfilerError::IoError(ref err) => Some(err),
             DotfilerError::TomlError(ref err) => Some(err),
             DotfilerError::TemplateRenderError(ref err) => Some(err),
@@ -62,5 +66,11 @@ impl From<handlebars::TemplateRenderError> for DotfilerError {
 impl From<toml::ser::Error> for DotfilerError {
     fn from(err: toml::ser::Error) -> DotfilerError {
         DotfilerError::TomlSerializerError(err)
+    }
+}
+
+impl From<String> for DotfilerError {
+    fn from(err: String) -> DotfilerError {
+        DotfilerError::Message(err)
     }
 }

@@ -1,6 +1,7 @@
 use std::io::{self, Read, Write};
 use std::{fs, env, path};
 use toml::{self, value};
+use std::process;
 use handlebars;
 
 use error;
@@ -26,18 +27,13 @@ pub fn load_config(config_path: &str) -> Result<Config, error::DotfilerError> {
 
 // Rust can't deal with "~", "$HOME" or relative paths, this takes care of that
 // Also remove / at end of path
-pub fn resolve_path(mut path: &str) -> Result<String, error::DotfilerError> {
-    if path.ends_with("/") {
-        path = &path[..path.len() - 1];
-    }
-
-    if path.starts_with("$HOME") {
-        Ok(get_home_dir()? + &path[5..])
-    } else if path.starts_with('~') {
-        Ok(get_home_dir()? + &path[1..])
-    } else {
-        Ok(path.to_string())
-    }
+pub fn resolve_path(path: &str) -> Result<String, error::DotfilerError> {
+    let command = format!("realpath -ms {}", path);
+    let output = process::Command::new("sh").arg("-c")
+        .arg(&command)
+        .output()?;
+    let resolved_out = output.stdout;
+    Ok(String::from_utf8_lossy(&resolved_out).trim().to_string())
 }
 
 pub fn get_home_dir() -> Result<String, io::Error> {
