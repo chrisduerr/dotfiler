@@ -7,7 +7,11 @@ target = "~/testing/Scripts"
 [[dotfiles]]
 template = "config"
 target = "~/testing/config"
+[[dotfiles]]
+template = "db.sqlite"
+target = "~/testing/db.sqlite"
 
 [variables]
 fg = "#7e1a7e"
 test = "#1b1b1b"
+color00 = "#ff00ff"

@@ -1,8 +1,7 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::{fs, env, path};
 use toml::{self, value};
 use std::process;
-use handlebars;
 
 use error;
 
@@ -34,15 +33,6 @@ pub fn resolve_path(path: &str) -> Result<String, error::DotfilerError> {
         .output()?;
     let resolved_out = output.stdout;
     Ok(String::from_utf8_lossy(&resolved_out).trim().to_string())
-}
-
-pub fn get_home_dir() -> Result<String, io::Error> {
-    let home_dir =
-        env::home_dir().ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::NotFound,
-                                           "Unable to locate home directory.")
-                        })?;
-    Ok(home_dir.to_string_lossy().to_string())
 }
 
 pub fn get_templates_path(config_path: &str) -> Result<path::PathBuf, io::Error> {
@@ -78,12 +68,6 @@ fn resolve_home_path() {
 #[test]
 fn resolve_root_path() {
     assert_eq!(resolve_path("/root/test").unwrap(), "/root/test");
-}
-
-// This obviously only works on my machine / with my username
-#[test]
-fn home_dir_is_undeadleech() {
-    assert_eq!(get_home_dir().unwrap(), String::from("/home/undeadleech"));
 }
 
 // Only checks last part of String to make it independent from compile path

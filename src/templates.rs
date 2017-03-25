@@ -1,19 +1,10 @@
-use std::io::{self, Read, Write};
-use toml::{self, value};
 use std::{fs, path};
-use std::os::unix;
-use handlebars;
-use walkdir;
 
 use filesystem;
 use common;
 use error;
 
-pub fn load(target_path: &str,
-            config_path: &str,
-            copy_files: bool,
-            copy_sqlite: bool)
-            -> Result<(), error::DotfilerError> {
+pub fn load(target_path: &str, config_path: &str) -> Result<(), error::DotfilerError> {
     let config = common::load_config(config_path)?;
     let templates_path = common::get_templates_path(config_path)?;
 
@@ -64,9 +55,7 @@ pub fn load(target_path: &str,
 #[test]
 fn load_correctly_saving_example_to_dummy_dir() {
     load("./example/",
-         "/home/undeadleech/Programming/Rust/dotfiler/examples/config.toml",
-         true,
-         true)
+         "/home/undeadleech/Programming/Rust/dotfiler/examples/config.toml")
             .unwrap();
 
     let file1_ok = fs::metadata("./example/home/undeadleech/testing/Xresources").is_ok();
@@ -79,15 +68,13 @@ fn load_correctly_saving_example_to_dummy_dir() {
     assert_eq!(file1_ok, true);
     assert_eq!(file2_ok, true);
     assert_eq!(file3_ok, true);
-    // assert_eq!(file4_ok, true);
+    assert_eq!(file4_ok, true);
 }
 
 #[test]
 fn load_copying_symlinks_not_target() {
     load("./symlink/",
-         "/home/undeadleech/Programming/Rust/dotfiler/examples/config.toml",
-         true,
-         true)
+         "/home/undeadleech/Programming/Rust/dotfiler/examples/config.toml")
             .unwrap();
 
     let is_symlink = fs::symlink_metadata("./symlink/home/undeadleech/testing/config")

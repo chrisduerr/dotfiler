@@ -2,11 +2,12 @@
 extern crate serde_derive;
 extern crate handlebars;
 extern crate tempfile;
+extern crate rusqlite;
 extern crate walkdir;
 extern crate clap;
 extern crate toml;
 
-mod add_template;
+// mod add_template;
 mod filesystem;
 mod templates;
 mod common;
@@ -19,14 +20,6 @@ fn main() {
         .version("0.1.0")
         .author("Christian Dürr <contact@christianduerr.com>")
         .about("A powerful dotfile manager")
-        .arg(clap::Arg::with_name("no-files")
-            .long("no-files")
-            .conflicts_with("no-sqlite")
-            .help("Don't copy normal files to their location."))
-        .arg(clap::Arg::with_name("no-sqlite")
-            .long("sqlite")
-            .conflicts_with("no-files")
-            .help("Don't copy SQLite files to their location."))
         .arg(clap::Arg::with_name("dry")
             .short("d")
             .long("dry")
@@ -60,24 +53,24 @@ fn main() {
         .get_matches();
 
     if let Some(args) = args.subcommand_matches("add") {
+        println!("This functionality hasn't been added yet. \
+                 You can look forward to it in the near future!");
         // Safe because "file" is required
-        let file = args.value_of("file").unwrap();
-        let config_path = get_config_dir(args.value_of("config"));
-        let templating_enabled = !args.is_present("no-templating");
-        let new_name = args.value_of("name");
+        // let file = args.value_of("file").unwrap();
+        // let config_path = get_config_dir(args.value_of("config"));
+        // let templating_enabled = !args.is_present("no-templating");
+        // let new_name = args.value_of("name");
 
-        add_template::add_template(&config_path, file, new_name, templating_enabled).unwrap();
+        // add_template::add_template(&config_path, file, new_name, templating_enabled).unwrap();
     } else {
         let config_path = get_config_dir(args.value_of("config"));
-        let copy_sqlite = !args.is_present("no-sqlite");
-        let copy_files = !args.is_present("no-files");
         let root_path = if args.is_present("dry") {
-            [&common::get_working_dir().unwrap(), "dry/"].concat()
+            [&common::get_working_dir().unwrap(), "/dry/"].concat()
         } else {
             String::from("/")
         };
 
-        templates::load(&root_path, &config_path, copy_files, copy_sqlite).unwrap();
+        templates::load(&root_path, &config_path).unwrap();
     }
 }
 

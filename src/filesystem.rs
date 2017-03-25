@@ -3,7 +3,7 @@ use std::{fs, path};
 use std::os::unix;
 use toml::value;
 use handlebars;
-use tempfile;
+use rusqlite;
 use walkdir;
 
 use common;
@@ -28,12 +28,45 @@ fn file_from_filetype(filetype: &fs::FileType,
     if filetype.is_dir() {
         return Ok(Box::new(Directory::new(src_path, tar_path)?));
     } else if filetype.is_file() {
-        return Ok(Box::new(TextFile::new(src_path, tar_path)?));
+        if is_sqlite(src_path)? {
+            return Ok(Box::new(SQLite::new(src_path, tar_path)?));
+        } else if is_binary(src_path) {
+            return Ok(Box::new(BinaryFile::new(src_path, tar_path)?));
+        } else {
+            return Ok(Box::new(TextFile::new(src_path, tar_path)?));
+        }
     } else if filetype.is_symlink() {
         return Ok(Box::new(Symlink::new(src_path, tar_path)?));
     }
 
     Ok(Err(io::Error::new(io::ErrorKind::InvalidData, "FileType does not exist."))?)
+}
+
+fn is_binary(path: &str) -> bool {
+    let mut buf = String::new();
+    if let Err(e) = fs::File::open(path).and_then(|mut f| f.read_to_string(&mut buf)) {
+        if e.kind() == io::ErrorKind::InvalidData {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn is_sqlite(path: &str) -> Result<bool, io::Error> {
+    let mut f = fs::File::open(path)?;
+    if f.metadata()?.len() < 6 {
+        return Ok(false);
+    }
+
+    let mut buffer = [0; 6];
+    f.read_exact(&mut buffer)?;
+
+    if String::from_utf8_lossy(&buffer) == "SQLite" {
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 pub trait File {
@@ -134,42 +167,43 @@ impl File for Directory {
 
 struct TextFile {
     data: String,
-    old_data: String,
     target_path: String,
+    backup_path: String,
     existed_already: bool,
 }
 
 impl TextFile {
     fn new(file_path: &str, target_path: &str) -> Result<TextFile, error::DotfilerError> {
+        // Create backup path and required directories
+        // parent_path can't fail since path is always at least "./cache" -> unwrap
+        let backup_path = &["./cache", target_path].concat();
+        let parent_path = path::Path::new(&backup_path).parent().unwrap();
+        fs::create_dir_all(&parent_path.to_string_lossy().to_string())?;
+
+        let mut existed_already = true;
+        if let Err(e) = fs::copy(target_path, backup_path) {
+            if e.kind() == io::ErrorKind::InvalidInput {
+                existed_already = false;
+            } else {
+                Err(e)?;
+            }
+        }
+
         let mut data = String::new();
         fs::File::open(file_path)?.read_to_string(&mut data)?;
 
         Ok(TextFile {
                data: data,
-               old_data: String::new(),
                target_path: target_path.to_string(),
-               existed_already: true,
+               backup_path: backup_path.to_string(),
+               existed_already: existed_already,
            })
     }
 }
 
 impl File for TextFile {
     fn save(&mut self) -> Result<(), error::DotfilerError> {
-        // Read existing data (if file exists already) into memory for ability to restore
-        let file_result = fs::File::open(&self.target_path);
-        match file_result.and_then(|mut f| f.read_to_string(&mut self.old_data)) {
-            Ok(_) => {
-                self.existed_already = true;
-            }
-            Err(err) => {
-                match err.kind() {
-                    io::ErrorKind::NotFound => self.existed_already = false,
-                    _ => Err(err)?,
-                }
-            }
-        };
-
-        fs::File::create(&self.target_path).and_then(|mut f| f.write_all(&self.data.as_bytes()))?;
+        fs::File::create(&self.target_path).and_then(|mut f| f.write_all(self.data.as_bytes()))?;
 
         Ok(())
     }
@@ -178,7 +212,8 @@ impl File for TextFile {
         if !self.existed_already {
             fs::remove_file(&self.target_path)?;
         } else {
-            fs::File::create(&self.target_path).and_then(|mut f| f.write_all(&self.old_data.as_bytes()))?;
+            let _ = fs::remove_file(&self.target_path);
+            fs::copy(&self.backup_path, &self.target_path)?;
         }
 
         Ok(())
@@ -216,8 +251,8 @@ impl Symlink {
     fn new(file_path: &str, target_path: &str) -> Result<Symlink, error::DotfilerError> {
         // Copy old symlink to backup location
         let mut existed_already = true;
-        let backup_path = &["./cache", file_path].concat();
-        if let Err(error::DotfilerError::IoError(e)) = copy_symlink(file_path, backup_path) {
+        let backup_path = &["./cache", target_path].concat();
+        if let Err(error::DotfilerError::IoError(e)) = copy_symlink(target_path, backup_path) {
             if e.kind() == io::ErrorKind::NotFound {
                 existed_already = false;
             } else {
@@ -269,32 +304,139 @@ impl File for Symlink {
 }
 
 struct SQLite {
-    data: tempfile::NamedTempFile,
     target_path: String,
+    backup_path: String,
     existed_already: bool,
 }
 
 impl SQLite {
     fn new(file_path: &str, target_path: &str) -> Result<SQLite, error::DotfilerError> {
-        unimplemented!();
+        // Create backup path and required directories
+        // parent_path can't fail since path is always at least "./cache" -> unwrap
+        let backup_path = &["./cache", target_path].concat();
+        let parent_path = path::Path::new(&backup_path).parent().unwrap();
+        fs::create_dir_all(&parent_path.to_string_lossy().to_string())?;
+
+        let mut existed_already = true;
+        if let Err(e) = fs::copy(target_path, backup_path) {
+            if e.kind() == io::ErrorKind::InvalidInput {
+                existed_already = false;
+            } else {
+                Err(e)?;
+            }
+        }
+
+        // Overwrite the current file with the templated version
+        fs::copy(file_path, target_path)?;
+
+        Ok(SQLite {
+               target_path: target_path.to_string(),
+               backup_path: backup_path.to_string(),
+               existed_already: existed_already,
+           })
     }
 }
 
 impl File for SQLite {
     fn save(&mut self) -> Result<(), error::DotfilerError> {
-        unimplemented!();
+        // Templating and rendering works directly on the target file,
+        // this means saving isn't needed
+        Ok(())
     }
 
     fn restore(&self) -> Result<(), error::DotfilerError> {
-        unimplemented!();
+        if !self.existed_already {
+            fs::remove_file(&self.target_path)?;
+        } else {
+            let _ = fs::remove_file(&self.target_path);
+            fs::copy(&self.backup_path, &self.target_path)?;
+        }
+
+        Ok(())
     }
 
     fn render(&mut self, variables: &value::Table) -> Result<(), error::DotfilerError> {
-        unimplemented!();
+        fn modify(entry: &str, variables: &value::Table) -> Result<String, error::DotfilerError> {
+            let handlebars = handlebars::Handlebars::new();
+            Ok(handlebars.template_render(entry, variables)?)
+        };
+
+        Ok(modify_sqlite_elements(&self.target_path, modify, variables)?)
     }
 
     fn template(&mut self, variables: &value::Table) -> Result<(), error::DotfilerError> {
-        unimplemented!();
+        fn modify(entry: &str, variables: &value::Table) -> Result<String, error::DotfilerError> {
+            let mut new_entry = entry.to_owned();
+            for (key, val) in variables {
+                if let Some(val) = val.as_str() {
+                    new_entry = new_entry.replace(&val, &format!("{{{{ {} }}}}", key));
+                }
+            }
+            Ok(new_entry)
+        };
+
+        Ok(modify_sqlite_elements(&self.target_path, modify, variables)?)
+    }
+}
+
+struct BinaryFile {
+    src_path: String,
+    target_path: String,
+    backup_path: String,
+    existed_already: bool,
+}
+
+impl BinaryFile {
+    fn new(file_path: &str, target_path: &str) -> Result<BinaryFile, error::DotfilerError> {
+        // Create backup path and required directories
+        // parent_path can't fail since path is always at least "./cache" -> unwrap
+        let backup_path = &["./cache", target_path].concat();
+        let parent_path = path::Path::new(&backup_path).parent().unwrap();
+        fs::create_dir_all(&parent_path.to_string_lossy().to_string())?;
+
+        let mut existed_already = true;
+        if let Err(e) = fs::copy(target_path, backup_path) {
+            if e.kind() == io::ErrorKind::InvalidInput {
+                existed_already = false;
+            } else {
+                Err(e)?;
+            }
+        }
+
+        Ok(BinaryFile {
+               src_path: file_path.to_string(),
+               target_path: target_path.to_string(),
+               backup_path: backup_path.to_string(),
+               existed_already: existed_already,
+           })
+    }
+}
+
+impl File for BinaryFile {
+    fn save(&mut self) -> Result<(), error::DotfilerError> {
+        fs::copy(&self.src_path, &self.target_path)?;
+        Ok(())
+    }
+
+    fn restore(&self) -> Result<(), error::DotfilerError> {
+        if !self.existed_already {
+            fs::remove_file(&self.target_path)?;
+        } else {
+            let _ = fs::remove_file(&self.target_path);
+            fs::copy(&self.backup_path, &self.target_path)?;
+        }
+
+        Ok(())
+    }
+
+    fn render(&mut self, _variables: &value::Table) -> Result<(), error::DotfilerError> {
+        // Binary files can't be templated or rendered
+        Ok(())
+    }
+
+    fn template(&mut self, _variables: &value::Table) -> Result<(), error::DotfilerError> {
+        // Binary files can't be templated or rendered
+        Ok(())
     }
 }
 
@@ -304,7 +446,8 @@ fn copy_symlink(src: &str, tar: &str) -> Result<(), error::DotfilerError> {
     let src_target = fs::read_link(src)?.to_string_lossy().to_string();
 
     // Create required directories
-    let parent_path = path::Path::new(tar).parent().ok_or(String::from("Cannot symlink to root."))?;
+    let parent_path = path::Path::new(tar).parent()
+        .ok_or_else(|| String::from("Cannot symlink to root."))?;
     fs::create_dir_all(&parent_path.to_string_lossy().to_string())?;
 
     // Try delete old symlink because symlinks can't be overwritten
@@ -312,4 +455,54 @@ fn copy_symlink(src: &str, tar: &str) -> Result<(), error::DotfilerError> {
 
     // Create new symlink
     Ok(unix::fs::symlink(&src_target, tar).unwrap())
+}
+
+// Apply one single &str -> String method to every element in a SQLite DB
+fn modify_sqlite_elements(path: &str,
+                          func: fn(&str, &value::Table) -> Result<String, error::DotfilerError>,
+                          variables: &value::Table)
+                          -> Result<(), error::DotfilerError> {
+    let db_conn = rusqlite::Connection::open(&path)?;
+    let mut stmt = db_conn.prepare("SELECT tbl_name FROM sqlite_master WHERE type = 'table'")?;
+    let mut tables = stmt.query(&[])?;
+
+    while let Some(Ok(table)) = tables.next() {
+        let table: String = match table.get_checked(0) {
+            Ok(table) => table,
+            Err(_) => continue,
+        };
+
+        // Use format because apparently this doesn't work with rusqlite and '?'
+        let mut stmt = db_conn.prepare(&format!("PRAGMA table_info({})", table))?;
+        let mut columns = stmt.query(&[])?;
+
+        while let Some(Ok(column)) = columns.next() {
+            let column: String = match column.get_checked(1) {
+                Ok(column) => column,
+                Err(_) => continue,
+            };
+
+            let mut stmt = db_conn.prepare(&format!("SELECT {} FROM {}", column, table))?;
+            let mut current_entries = stmt.query(&[])?;
+
+            while let Some(Ok(current_entry)) = current_entries.next() {
+                let mut current_entry: String = match current_entry.get_checked(0) {
+                    Ok(current_entry) => current_entry,
+                    Err(_) => continue,
+                };
+                current_entry = current_entry.replace("'", "''");
+
+                let new_entry = func(&current_entry, variables)?;
+                db_conn.execute(&format!("UPDATE {} SET {}='{}' WHERE {}='{}'",
+                                         &table,
+                                         &column,
+                                         &new_entry,
+                                         &column,
+                                         &current_entry),
+                                &[])?;
+            }
+        }
+    }
+
+    Ok(())
 }
