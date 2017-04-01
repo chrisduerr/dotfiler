@@ -9,13 +9,11 @@ use walkdir;
 use common;
 use error;
 
-// TODO: Add SQLite templating again!
-
 pub fn create_tree_from_path(src_path: &str,
                              tar_path: &str)
                              -> Result<Box<File>, error::DotfilerError> {
-    let src_path = common::resolve_path(src_path)?;
-    let tar_path = common::resolve_path(tar_path)?;
+    let src_path = common::resolve_path(src_path, None)?;
+    let tar_path = common::resolve_path(tar_path, None)?;
 
     let filetype = fs::symlink_metadata(&src_path)?.file_type();
     Ok(file_from_filetype(&filetype, &src_path, &tar_path)?)

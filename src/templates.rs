@@ -10,8 +10,8 @@ pub fn load(target_path: &str, config_path: &str) -> Result<(), error::DotfilerE
 
     for dotfile in &config.dotfiles {
         let template_str = templates_path.join(&dotfile.template).to_string_lossy().to_string();
-        let template_path = common::resolve_path(&template_str)?;
-        let tar_path = [target_path, &common::resolve_path(&dotfile.target)?[1..]].concat();
+        let template_path = common::resolve_path(&template_str, None)?;
+        let tar_path = [target_path, &common::resolve_path(&dotfile.target, None)?[1..]].concat();
 
         // Create all required target directories before root
         let _ = path::Path::new(&tar_path).parent().map(|p| fs::create_dir_all(&p));
@@ -36,13 +36,13 @@ pub fn load(target_path: &str, config_path: &str) -> Result<(), error::DotfilerE
 
             if let Err(e) = root.restore() {
                 println!("Critical Error! Unable to recover from failure.\n{}", e);
-                continue;
             }
 
             continue;
         }
     }
 
+    println!("Every file as been templated.");
     Ok(())
 }
 

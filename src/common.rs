@@ -18,7 +18,7 @@ pub struct Dotfile {
 }
 
 pub fn load_config(config_path: &str) -> Result<Config, error::DotfilerError> {
-    let config_path = resolve_path(config_path)?;
+    let config_path = resolve_path(config_path, None)?;
     let mut buffer = String::new();
     fs::File::open(config_path)?.read_to_string(&mut buffer)?;
     Ok(toml::from_str(&buffer)?)
@@ -26,8 +26,12 @@ pub fn load_config(config_path: &str) -> Result<Config, error::DotfilerError> {
 
 // Rust can't deal with "~", "$HOME" or relative paths, this takes care of that
 // Also remove / at end of path
-pub fn resolve_path(path: &str) -> Result<String, error::DotfilerError> {
-    let command = format!("realpath -ms {}", path);
+pub fn resolve_path(path: &str, working_dir: Option<&str>) -> Result<String, io::Error> {
+    let mut command = format!("realpath -ms {}", path);
+    if working_dir.is_some() {
+        command = format!("cd {} && {}", working_dir.unwrap(), command);
+    }
+
     let output = process::Command::new("sh").arg("-c")
         .arg(&command)
         .output()?;
@@ -36,10 +40,8 @@ pub fn resolve_path(path: &str) -> Result<String, error::DotfilerError> {
 }
 
 pub fn get_templates_path(config_path: &str) -> Result<path::PathBuf, io::Error> {
-    Ok(path::Path::new(config_path)
-           .parent()
-           .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Config can't be root."))?
-           .join("templates"))
+    let config_path = resolve_path(config_path, None)?;
+    Ok(path::Path::new(&config_path).parent().unwrap().join("templates"))
 }
 
 pub fn get_working_dir() -> Result<String, io::Error> {
@@ -58,16 +60,16 @@ pub fn get_working_dir() -> Result<String, io::Error> {
 // Again, this requires the user to be undeadleech
 #[test]
 fn resolve_home_path() {
-    assert_eq!(resolve_path("~/Programming").unwrap(),
+    assert_eq!(resolve_path("~/Programming", None).unwrap(),
                "/home/undeadleech/Programming");
-    assert_eq!(resolve_path("$HOME/Programming").unwrap(),
+    assert_eq!(resolve_path("$HOME/Programming", None).unwrap(),
                "/home/undeadleech/Programming");
 }
 
 // Finally something that doesn't rely on anything
 #[test]
 fn resolve_root_path() {
-    assert_eq!(resolve_path("/root/test").unwrap(), "/root/test");
+    assert_eq!(resolve_path("/root/test", None).unwrap(), "/root/test");
 }
 
 // Only checks last part of String to make it independent from compile path

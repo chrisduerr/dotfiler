@@ -7,7 +7,9 @@ extern crate walkdir;
 extern crate clap;
 extern crate toml;
 
-// mod add_template;
+use std::fs;
+
+mod add_template;
 mod filesystem;
 mod templates;
 mod common;
@@ -15,6 +17,7 @@ mod error;
 
 // TODO: Better errors for users
 // TODO: No logging required Errors should never reach main.rs (so no unwrap required)
+// TODO: Add ability to execute scripts
 fn main() {
     let args = clap::App::new("Dotfiler")
         .version("0.1.0")
@@ -40,6 +43,7 @@ fn main() {
             .arg(clap::Arg::with_name("name")
                 .short("n")
                 .long("name")
+                .value_name("NAME")
                 .help("An alternative name for the new template file."))
             .arg(clap::Arg::with_name("config")
                 .short("c")
@@ -53,15 +57,15 @@ fn main() {
         .get_matches();
 
     if let Some(args) = args.subcommand_matches("add") {
-        println!("This functionality hasn't been added yet. \
-                 You can look forward to it in the near future!");
-        // Safe because "file" is required
-        // let file = args.value_of("file").unwrap();
-        // let config_path = get_config_dir(args.value_of("config"));
-        // let templating_enabled = !args.is_present("no-templating");
-        // let new_name = args.value_of("name");
+        let file = args.value_of("file").unwrap();
+        let config_path = get_config_dir(args.value_of("config"));
+        let templating_enabled = !args.is_present("no-templating");
+        let new_name = args.value_of("name");
 
-        // add_template::add_template(&config_path, file, new_name, templating_enabled).unwrap();
+        let result = add_template::add_template(&config_path, file, new_name, templating_enabled);
+        if let Err(e) = result {
+            println!("{}", e);
+        };
     } else {
         let config_path = get_config_dir(args.value_of("config"));
         let root_path = if args.is_present("dry") {
@@ -70,13 +74,25 @@ fn main() {
             String::from("/")
         };
 
-        templates::load(&root_path, &config_path).unwrap();
+        if let Err(e) = templates::load(&root_path, &config_path) {
+            println!("{}", e);
+        };
     }
 }
 
 fn get_config_dir(config: Option<&str>) -> String {
-    match config {
-        Some(config) => config.to_string(),
-        None => String::from("./config.toml"),
+    let config = match config {
+        Some(config) => config,
+        None => "config.toml",
+    };
+
+    match common::resolve_path(config, None) {
+        Ok(path) => {
+            match fs::metadata(&path) {
+                Ok(_) => path,
+                Err(e) => panic!("Unable to find config file:\n{}", e),
+            }
+        }
+        Err(e) => panic!("Invalid config file path:\n{}", e),
     }
 }
