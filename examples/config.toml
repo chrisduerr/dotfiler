@@ -1,3 +1,5 @@
+scripts = ["test.py"]
+
 [[dotfiles]]
 template = "Xresources"
 target = "~/testing/Xresources"

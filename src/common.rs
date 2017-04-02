@@ -7,8 +7,9 @@ use error;
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub dotfiles: Vec<Dotfile>,
-    pub variables: value::Table,
+    pub dotfiles: Option<Vec<Dotfile>>,
+    pub variables: Option<value::Table>,
+    pub scripts: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,6 +36,14 @@ pub fn resolve_path(path: &str, working_dir: Option<&str>) -> Result<String, io:
     let output = process::Command::new("sh").arg("-c")
         .arg(&command)
         .output()?;
+
+    if !output.stderr.is_empty() {
+        let msg = format!("Unable to resolve path using '{}':\n{}",
+                          command,
+                          String::from_utf8_lossy(&output.stderr).trim());
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, msg));
+    }
+
     let resolved_out = output.stdout;
     Ok(String::from_utf8_lossy(&resolved_out).trim().to_string())
 }

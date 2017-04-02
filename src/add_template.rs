@@ -6,9 +6,6 @@ use filesystem;
 use common;
 use error;
 
-// TODO: Don't make any changes if one file template fails
-// TODO: Don't edit the config if one file fails
-// TODO: Implement option to rename file/directory (flag?)
 pub fn add_template(config_path: &str,
                     file_path: &str,
                     new_name: Option<&str>,
@@ -25,26 +22,30 @@ pub fn add_template(config_path: &str,
     let tar_path = templates_path.join(tar_path);
     let tar_path = tar_path.to_string_lossy().to_string();
 
-    if let Some(duplicate_entry) =
-        template_exists_already(&config.dotfiles,
-                                &templates_path.to_string_lossy(),
-                                &tar_path,
-                                file_path)? {
-        println!("The template exists already. Do you want to update or overwrite it? [y/N]");
+    if let Some(ref mut dotfiles) = config.dotfiles {
+        if let Some(duplicate_entry) =
+            template_exists_already(&dotfiles,
+                                    &templates_path.to_string_lossy(),
+                                    &tar_path,
+                                    file_path)? {
+            println!("The template exists already. Do you want to update or overwrite it? [y/N]");
 
-        let mut buf = String::new();
-        io::stdin().read_line(&mut buf)?;
+            let mut buf = String::new();
+            io::stdin().read_line(&mut buf)?;
 
-        if buf.to_lowercase().trim() != "y" {
-            println!("The file has not been added.");
-            return Ok(());
-        } else {
-            config.dotfiles.swap_remove(duplicate_entry);
-            if let Err(e) = fs::remove_dir_all(&tar_path) {
-                let msg = format!("Unable to overwrite current template: {}", e);
-                return Err(error::DotfilerError::Message(msg));
+            if buf.to_lowercase().trim() != "y" {
+                println!("The file has not been added.");
+                return Ok(());
+            } else {
+                dotfiles.swap_remove(duplicate_entry);
+                if let Err(e) = fs::remove_dir_all(&tar_path) {
+                    let msg = format!("Unable to overwrite current template: {}", e);
+                    return Err(error::DotfilerError::Message(msg));
+                }
             }
         }
+    } else {
+        config.dotfiles = Some(Vec::new());
     }
 
     // Back up old config to cache
@@ -65,9 +66,11 @@ pub fn add_template(config_path: &str,
     };
 
     if templating_enabled {
-        if let Err(e) = root.template(&config.variables) {
-            let msg = format!("Unable to add the file '{}':\n{}", file_path, e);
-            return Err(error::DotfilerError::Message(msg));
+        if let Some(ref vars) = config.variables {
+            if let Err(e) = root.template(&vars) {
+                let msg = format!("Unable to add the file '{}':\n{}", file_path, e);
+                return Err(error::DotfilerError::Message(msg));
+            }
         }
     }
 
@@ -86,7 +89,10 @@ pub fn add_template(config_path: &str,
         template: tar_path.clone(),
         target: file_path.to_string(),
     };
-    config.dotfiles.push(dotfile);
+
+    if let Some(ref mut dotfiles) = config.dotfiles {
+        dotfiles.push(dotfile);
+    }
 
     // Save new config
     let new_config = toml::to_string(&config)?;

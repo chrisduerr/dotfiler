@@ -6,39 +6,43 @@ use error;
 
 pub fn load(target_path: &str, config_path: &str) -> Result<(), error::DotfilerError> {
     let config = common::load_config(config_path)?;
-    let templates_path = common::get_templates_path(config_path)?;
+    let templates_path = common::get_templates_path(config_path)?.to_string_lossy().to_string();
 
-    for dotfile in &config.dotfiles {
-        let template_str = templates_path.join(&dotfile.template).to_string_lossy().to_string();
-        let template_path = common::resolve_path(&template_str, None)?;
-        let tar_path = [target_path, &common::resolve_path(&dotfile.target, None)?[1..]].concat();
+    if let Some(ref dotfiles) = config.dotfiles {
+        for dotfile in dotfiles {
+            let template_path = common::resolve_path(&dotfile.template, Some(&templates_path))?;
+            let tar_path = [target_path, &common::resolve_path(&dotfile.target, None)?[1..]]
+                .concat();
 
-        // Create all required target directories before root
-        let _ = path::Path::new(&tar_path).parent().map(|p| fs::create_dir_all(&p));
+            // Create all required target directories before root
+            let _ = path::Path::new(&tar_path).parent().map(|p| fs::create_dir_all(&p));
 
-        let mut root = match filesystem::create_tree_from_path(&template_path, &tar_path) {
-            Ok(root) => root,
-            Err(e) => {
-                println!("Can't create tree for template '{}':\n{}", template_path, e);
+            let mut root = match filesystem::create_tree_from_path(&template_path, &tar_path) {
+                Ok(root) => root,
+                Err(e) => {
+                    println!("Can't create tree for template '{}':\n{}", template_path, e);
+                    continue;
+                }
+            };
+
+            if let Some(ref vars) = config.variables {
+                if let Err(e) = root.render(&vars) {
+                    println!("Unable to template the template '{}':\n{}",
+                             template_path,
+                             e);
+                    continue;
+                }
+            }
+
+            if let Err(e) = root.save() {
+                println!("Unable to save the template '{}':\n{}", template_path, e);
+
+                if let Err(e) = root.restore() {
+                    println!("Critical Error! Unable to recover from failure.\n{}", e);
+                }
+
                 continue;
             }
-        };
-
-        if let Err(e) = root.render(&config.variables) {
-            println!("Unable to template the template '{}':\n{}",
-                     template_path,
-                     e);
-            continue;
-        }
-
-        if let Err(e) = root.save() {
-            println!("Unable to save the template '{}':\n{}", template_path, e);
-
-            if let Err(e) = root.restore() {
-                println!("Critical Error! Unable to recover from failure.\n{}", e);
-            }
-
-            continue;
         }
     }
 

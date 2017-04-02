@@ -12,12 +12,11 @@ use std::fs;
 mod add_template;
 mod filesystem;
 mod templates;
+mod scripts;
 mod common;
 mod error;
 
-// TODO: Better errors for users
-// TODO: No logging required Errors should never reach main.rs (so no unwrap required)
-// TODO: Add ability to execute scripts
+// TODO: Check for diffs instead of overwriting every file
 fn main() {
     let args = clap::App::new("Dotfiler")
         .version("0.1.0")
@@ -65,7 +64,7 @@ fn main() {
         let result = add_template::add_template(&config_path, file, new_name, templating_enabled);
         if let Err(e) = result {
             println!("{}", e);
-        };
+        }
     } else {
         let config_path = get_config_dir(args.value_of("config"));
         let root_path = if args.is_present("dry") {
@@ -76,7 +75,11 @@ fn main() {
 
         if let Err(e) = templates::load(&root_path, &config_path) {
             println!("{}", e);
-        };
+        } else {
+            if let Err(e) = scripts::execute(&config_path) {
+                println!("{}", e);
+            }
+        }
     }
 }
 
