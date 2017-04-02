@@ -9,7 +9,7 @@ pub fn execute(config_path: &str) -> Result<(), error::DotfilerError> {
 
     if let Some(ref scripts) = config.scripts {
         for script in scripts {
-            let script: String = match common::resolve_path(&script, Some(&scripts_path)) {
+            let script: String = match common::resolve_path(script, Some(&scripts_path)) {
                 Ok(path) => path,
                 Err(e) => {
                     println!("Unable to load script '{}':\n{}", script, e);

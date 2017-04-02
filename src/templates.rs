@@ -26,7 +26,7 @@ pub fn load(target_path: &str, config_path: &str) -> Result<(), error::DotfilerE
             };
 
             if let Some(ref vars) = config.variables {
-                if let Err(e) = root.render(&vars) {
+                if let Err(e) = root.render(vars) {
                     println!("Unable to template the template '{}':\n{}",
                              template_path,
                              e);

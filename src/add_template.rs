@@ -11,9 +11,9 @@ pub fn add_template(config_path: &str,
                     new_name: Option<&str>,
                     templating_enabled: bool)
                     -> Result<(), error::DotfilerError> {
-    let mut config = common::load_config(&config_path)?;
+    let mut config = common::load_config(config_path)?;
 
-    let templates_path = common::get_templates_path(&config_path)?;
+    let templates_path = common::get_templates_path(config_path)?;
 
     let tar_path = match new_name {
         Some(name) => name,
@@ -24,7 +24,7 @@ pub fn add_template(config_path: &str,
 
     if let Some(ref mut dotfiles) = config.dotfiles {
         if let Some(duplicate_entry) =
-            template_exists_already(&dotfiles,
+            template_exists_already(dotfiles,
                                     &templates_path.to_string_lossy(),
                                     &tar_path,
                                     file_path)? {
@@ -67,7 +67,7 @@ pub fn add_template(config_path: &str,
 
     if templating_enabled {
         if let Some(ref vars) = config.variables {
-            if let Err(e) = root.template(&vars) {
+            if let Err(e) = root.template(vars) {
                 let msg = format!("Unable to add the file '{}':\n{}", file_path, e);
                 return Err(error::DotfilerError::Message(msg));
             }
@@ -96,7 +96,7 @@ pub fn add_template(config_path: &str,
 
     // Save new config
     let new_config = toml::to_string(&config)?;
-    if let Err(e) = fs::File::create(common::resolve_path(&config_path, None)?)
+    if let Err(e) = fs::File::create(common::resolve_path(config_path, None)?)
            .and_then(|mut f| f.write_all(new_config.as_bytes())) {
         let mut msg = format!("Unable to save new config:\n{}", e);
 

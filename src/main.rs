@@ -17,6 +17,7 @@ mod common;
 mod error;
 
 // TODO: Check for diffs instead of overwriting every file
+// TODO: Add ability to add script through command
 fn main() {
     let args = clap::App::new("Dotfiler")
         .version("0.1.0")
@@ -75,10 +76,8 @@ fn main() {
 
         if let Err(e) = templates::load(&root_path, &config_path) {
             println!("{}", e);
-        } else {
-            if let Err(e) = scripts::execute(&config_path) {
-                println!("{}", e);
-            }
+        } else if let Err(e) = scripts::execute(&config_path) {
+            println!("{}", e);
         }
     }
 }
