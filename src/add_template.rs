@@ -23,7 +23,7 @@ pub fn add_template(config_path: &str,
     let tar_path = tar_path.to_string_lossy().to_string();
 
     if let Some(ref mut dotfiles) = config.dotfiles {
-        if let Some(duplicate_entry) =
+        if let Some(duplicate_index) =
             template_exists_already(dotfiles,
                                     &templates_path.to_string_lossy(),
                                     &tar_path,
@@ -37,11 +37,27 @@ pub fn add_template(config_path: &str,
                 println!("The file has not been added.");
                 return Ok(());
             } else {
-                dotfiles.swap_remove(duplicate_entry);
-                if let Err(e) = fs::remove_dir_all(&tar_path) {
-                    let msg = format!("Unable to overwrite current template: {}", e);
-                    return Err(error::DotfilerError::Message(msg));
+                {
+                    let duplicate = dotfiles.get(duplicate_index).unwrap();
+                    let duplicate_template_path = common::resolve_path(&duplicate.template, None)?;
+
+                    let error = match fs::metadata(&duplicate_template_path) {
+                        Ok(metadata) => {
+                            if metadata.is_dir() {
+                                fs::remove_dir_all(&duplicate_template_path).err()
+                            } else {
+                                fs::remove_file(&duplicate_template_path).err()
+                            }
+                        }
+                        Err(e) => Some(e),
+                    };
+
+                    if let Some(e) = error {
+                        let msg = format!("Unable to remove the duplicate file: {}", e);
+                        return Err(error::DotfilerError::Message(msg));
+                    }
                 }
+                dotfiles.swap_remove(duplicate_index);
             }
         }
     } else {

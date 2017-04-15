@@ -36,7 +36,7 @@ fn main() {
             .about("Add new directories, symlinks or files to your dotfiles.")
             .version("0.1.0")
             .author("Christian Dürr <contact@christianduerr>")
-            .arg(clap::Arg::with_name("file")
+            .arg(clap::Arg::with_name("FILE")
                 .help("File, directory or symlink you want to add.")
                 .required(true)
                 .index(1))
@@ -57,7 +57,7 @@ fn main() {
         .get_matches();
 
     if let Some(args) = args.subcommand_matches("add") {
-        let file = args.value_of("file").unwrap();
+        let file = args.value_of("FILE").unwrap();
         let config_path = get_config_dir(args.value_of("config"));
         let templating_enabled = !args.is_present("no-templating");
         let new_name = args.value_of("name");
