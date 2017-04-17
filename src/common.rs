@@ -7,9 +7,9 @@ use error;
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
+    pub scripts: Option<Vec<String>>,
     pub dotfiles: Option<Vec<Dotfile>>,
     pub variables: Option<value::Table>,
-    pub scripts: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -21,7 +21,8 @@ pub struct Dotfile {
 pub fn load_config(config_path: &str) -> Result<Config, error::DotfilerError> {
     let config_path = resolve_path(config_path, None)?;
     let mut buffer = String::new();
-    fs::File::open(config_path)?.read_to_string(&mut buffer)?;
+    fs::File::open(config_path)?
+        .read_to_string(&mut buffer)?;
     Ok(toml::from_str(&buffer)?)
 }
 
@@ -33,7 +34,8 @@ pub fn resolve_path(path: &str, working_dir: Option<&str>) -> Result<String, io:
         command = format!("cd {} && {}", working_dir.unwrap(), command);
     }
 
-    let output = process::Command::new("sh").arg("-c")
+    let output = process::Command::new("sh")
+        .arg("-c")
         .arg(&command)
         .output()?;
 
@@ -50,7 +52,10 @@ pub fn resolve_path(path: &str, working_dir: Option<&str>) -> Result<String, io:
 
 pub fn get_templates_path(config_path: &str) -> Result<path::PathBuf, io::Error> {
     let config_path = resolve_path(config_path, None)?;
-    Ok(path::Path::new(&config_path).parent().unwrap().join("templates"))
+    Ok(path::Path::new(&config_path)
+           .parent()
+           .unwrap()
+           .join("templates"))
 }
 
 pub fn get_working_dir() -> Result<String, io::Error> {

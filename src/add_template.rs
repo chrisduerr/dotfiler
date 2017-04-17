@@ -71,7 +71,9 @@ pub fn add_template(config_path: &str,
     }
 
     // Create all required target directories before root
-    let _ = path::Path::new(&tar_path).parent().map(|p| fs::create_dir_all(&p));
+    let _ = path::Path::new(&tar_path)
+        .parent()
+        .map(|p| fs::create_dir_all(&p));
 
     let mut root = match filesystem::create_tree_from_path(file_path, &tar_path) {
         Ok(root) => root,
